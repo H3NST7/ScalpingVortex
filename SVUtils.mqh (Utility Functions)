@@ -1,0 +1,459 @@
+//+------------------------------------------------------------------+
+//|                                                   SVUtils.mqh |
+//|                                           Copyright 2025, H3nst7 |
+//|                                           https://www.h3nst7.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2025, H3nst7"
+#property link      "https://www.h3nst7.com"
+#property strict
+
+// Logging levels enum
+enum ENUM_LOG_LEVEL {
+   LOG_LEVEL_NONE    = 0,  // No logging
+   LOG_LEVEL_CRITICAL = 1,  // Critical errors only
+   LOG_LEVEL_ERROR   = 2,  // Errors
+   LOG_LEVEL_WARNING = 3,  // Warnings
+   LOG_LEVEL_INFO    = 4,  // Informational messages
+   LOG_LEVEL_DEBUG   = 5   // Detailed debug info
+};
+
+// Market session enum
+enum ENUM_MARKET_SESSION {
+   MARKET_SESSION_UNKNOWN = 0,  // Unknown session
+   MARKET_SESSION_ASIAN   = 1,  // Asian session
+   MARKET_SESSION_LONDON  = 2,  // London session
+   MARKET_SESSION_NEWYORK = 3,  // New York session
+   MARKET_SESSION_OVERLAP = 4   // Session overlap
+};
+
+// Utility static class
+class CSVUtils
+{
+private:
+   static ENUM_LOG_LEVEL m_logLevel;      // Current log level
+   static int m_logFile;                  // Log file handle
+   static string m_logFileName;           // Log file name
+   static bool m_logToFile;               // Flag to log to file
+   
+   // Private helper methods
+   static string GetLogLevelString(ENUM_LOG_LEVEL level);
+   static string TimeToString(datetime time);
+   static bool IsTimeInRange(const datetime time, const string rangeStr);
+   
+public:
+   // Logging functions
+   static void InitializeLogging(ENUM_LOG_LEVEL level, bool logToFile = true);
+   static void SetLogLevel(ENUM_LOG_LEVEL level);
+   static void Log(ENUM_LOG_LEVEL level, string module, string message);
+   static void CloseLogging();
+   
+   // Date & time utility functions
+   static ENUM_MARKET_SESSION GetCurrentSession();
+   static bool IsInExcludedTime(const string excludedTimes);
+   static bool IsWeekend();
+   static bool IsHighImpactNewsTime(datetime time, int bufferMinutesBefore, int bufferMinutesAfter);
+   
+   // String manipulation functions
+   static string DoubleToString(double value, int digits);
+   static string IntegerToString(long value);
+   static string OrderTypeToString(ENUM_ORDER_TYPE orderType);
+   static string FormatError(int errorCode);
+   
+   // Math & statistical functions
+   static double NormalizeDouble(double value, int digits);
+   static double CalculateStandardDeviation(double &data[], int start, int count);
+   static int Round(double value);
+   
+   // Market/Symbol information functions
+   static double GetPointValue();
+   static double GetTickSize();
+   static double GetMinLot();
+   static double GetLotStep();
+   static double GetMaxLot();
+   static double GetContractSize();
+   static double PipsToPrice(double pips);
+   static double PriceToPips(double price);
+   static bool IsValidLotSize(double lotSize);
+   static double NormalizeLotSize(double lotSize);
+};
+
+// Static member initialization
+ENUM_LOG_LEVEL CSVUtils::m_logLevel = LOG_LEVEL_INFO;
+int CSVUtils::m_logFile = INVALID_HANDLE;
+string CSVUtils::m_logFileName = "";
+bool CSVUtils::m_logToFile = true;
+
+//+------------------------------------------------------------------+
+//| Initialize logging with specified level                          |
+//+------------------------------------------------------------------+
+void CSVUtils::InitializeLogging(ENUM_LOG_LEVEL level, bool logToFile = true)
+{
+   m_logLevel = level;
+   m_logToFile = logToFile;
+   
+   if(m_logToFile) {
+      // Create log file name with timestamp
+      m_logFileName = "ScalpingVortex_" + TimeToString(TimeCurrent()) + ".log";
+      m_logFile = FileOpen(m_logFileName, FILE_WRITE|FILE_TXT|FILE_ANSI);
+      
+      if(m_logFile != INVALID_HANDLE) {
+         FileWrite(m_logFile, "======== ScalpingVortex Log Started at " + TimeToString(TimeCurrent()) + " ========");
+         FileFlush(m_logFile);
+      } else {
+         Print("Error opening log file: ", GetLastError());
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Set the current log level                                        |
+//+------------------------------------------------------------------+
+void CSVUtils::SetLogLevel(ENUM_LOG_LEVEL level)
+{
+   m_logLevel = level;
+}
+
+//+------------------------------------------------------------------+
+//| Log a message with specified level                               |
+//+------------------------------------------------------------------+
+void CSVUtils::Log(ENUM_LOG_LEVEL level, string module, string message)
+{
+   // Check if we should log this level
+   if(level > m_logLevel) return;
+   
+   // Format the log message with timestamp, level and module
+   string logStr = TimeToString(TimeCurrent()) + " [" + GetLogLevelString(level) + "] " + module + ": " + message;
+   
+   // Print to MT5 console
+   Print(logStr);
+   
+   // Write to log file if enabled
+   if(m_logToFile && m_logFile != INVALID_HANDLE) {
+      FileWrite(m_logFile, logStr);
+      FileFlush(m_logFile);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Close the log file                                               |
+//+------------------------------------------------------------------+
+void CSVUtils::CloseLogging()
+{
+   if(m_logToFile && m_logFile != INVALID_HANDLE) {
+      FileWrite(m_logFile, "======== ScalpingVortex Log Ended at " + TimeToString(TimeCurrent()) + " ========");
+      FileClose(m_logFile);
+      m_logFile = INVALID_HANDLE;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Convert log level to string representation                        |
+//+------------------------------------------------------------------+
+string CSVUtils::GetLogLevelString(ENUM_LOG_LEVEL level)
+{
+   switch(level) {
+      case LOG_LEVEL_CRITICAL: return "CRITICAL";
+      case LOG_LEVEL_ERROR:    return "ERROR";
+      case LOG_LEVEL_WARNING:  return "WARNING";
+      case LOG_LEVEL_INFO:     return "INFO";
+      case LOG_LEVEL_DEBUG:    return "DEBUG";
+      default:                 return "UNKNOWN";
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Convert datetime to formatted string                             |
+//+------------------------------------------------------------------+
+string CSVUtils::TimeToString(datetime time)
+{
+   return StringFormat("%04d.%02d.%02d %02d:%02d:%02d", 
+                       TimeYear(time), TimeMonth(time), TimeDay(time), 
+                       TimeHour(time), TimeMinute(time), TimeSeconds(time));
+}
+
+//+------------------------------------------------------------------+
+//| Determine the current market session                             |
+//+------------------------------------------------------------------+
+ENUM_MARKET_SESSION CSVUtils::GetCurrentSession()
+{
+   int hour = TimeHour(TimeCurrent());
+   
+   // Note: Hours are in GMT
+   if(hour >= 0 && hour < 8) {
+      return MARKET_SESSION_ASIAN;
+   } else if(hour >= 8 && hour < 12) {
+      // London session with some Asian overlap
+      return MARKET_SESSION_LONDON;
+   } else if(hour >= 12 && hour < 16) {
+      // London and New York overlap
+      return MARKET_SESSION_OVERLAP;
+   } else if(hour >= 16 && hour < 20) {
+      return MARKET_SESSION_NEWYORK;
+   } else {
+      return MARKET_SESSION_UNKNOWN;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if current time is in excluded time ranges                 |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsInExcludedTime(const string excludedTimes)
+{
+   if(StringLen(excludedTimes) == 0) return false;
+   
+   datetime currentTime = TimeCurrent();
+   string ranges[];
+   
+   // Split by semicolon
+   int rangeCount = StringSplit(excludedTimes, ';', ranges);
+   
+   for(int i = 0; i < rangeCount; i++) {
+      if(StringLen(ranges[i]) == 0) continue;
+      
+      if(IsTimeInRange(currentTime, ranges[i])) {
+         return true;
+      }
+   }
+   
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Check if time is within a specific time range                    |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsTimeInRange(const datetime time, const string rangeStr)
+{
+   // Format expected: "HH:MM-HH:MM"
+   string timeParts[];
+   int splitCount = StringSplit(rangeStr, '-', timeParts);
+   
+   if(splitCount != 2) return false;
+   
+   // Extract start and end time parts
+   string startTimeParts[];
+   string endTimeParts[];
+   
+   int startSplitCount = StringSplit(timeParts[0], ':', startTimeParts);
+   int endSplitCount = StringSplit(timeParts[1], ':', endTimeParts);
+   
+   if(startSplitCount != 2 || endSplitCount != 2) return false;
+   
+   // Convert to minutes since midnight
+   int startMinutes = (int)StringToInteger(startTimeParts[0]) * 60 + (int)StringToInteger(startTimeParts[1]);
+   int endMinutes = (int)StringToInteger(endTimeParts[0]) * 60 + (int)StringToInteger(endTimeParts[1]);
+   int currentMinutes = TimeHour(time) * 60 + TimeMinute(time);
+   
+   // Check if current time is within range
+   if(startMinutes <= endMinutes) {
+      // Simple range (e.g., 09:30-16:30)
+      return (currentMinutes >= startMinutes && currentMinutes <= endMinutes);
+   } else {
+      // Overnight range (e.g., 22:00-02:30)
+      return (currentMinutes >= startMinutes || currentMinutes <= endMinutes);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if it's currently weekend                                  |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsWeekend()
+{
+   int dayOfWeek = TimeDayOfWeek(TimeCurrent());
+   return (dayOfWeek == 0 || dayOfWeek == 6);  // Sunday or Saturday
+}
+
+//+------------------------------------------------------------------+
+//| Check if time is around high-impact news                         |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsHighImpactNewsTime(datetime time, int bufferMinutesBefore, int bufferMinutesAfter)
+{
+   // This is a stub function - would need to be implemented with actual news data
+   // For a real implementation, you would need to access an economic calendar API
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Convert double to string with specified precision                |
+//+------------------------------------------------------------------+
+string CSVUtils::DoubleToString(double value, int digits)
+{
+   return StringFormat("%." + IntegerToString(digits) + "f", value);
+}
+
+//+------------------------------------------------------------------+
+//| Convert integer to string                                        |
+//+------------------------------------------------------------------+
+string CSVUtils::IntegerToString(long value)
+{
+   return StringFormat("%d", value);
+}
+
+//+------------------------------------------------------------------+
+//| Convert order type to string                                     |
+//+------------------------------------------------------------------+
+string CSVUtils::OrderTypeToString(ENUM_ORDER_TYPE orderType)
+{
+   switch(orderType) {
+      case ORDER_TYPE_BUY:            return "BUY";
+      case ORDER_TYPE_SELL:           return "SELL";
+      case ORDER_TYPE_BUY_LIMIT:      return "BUY LIMIT";
+      case ORDER_TYPE_SELL_LIMIT:     return "SELL LIMIT";
+      case ORDER_TYPE_BUY_STOP:       return "BUY STOP";
+      case ORDER_TYPE_SELL_STOP:      return "SELL STOP";
+      case ORDER_TYPE_BUY_STOP_LIMIT: return "BUY STOP LIMIT";
+      case ORDER_TYPE_SELL_STOP_LIMIT:return "SELL STOP LIMIT";
+      default:                        return "UNKNOWN";
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Format error code to readable string                             |
+//+------------------------------------------------------------------+
+string CSVUtils::FormatError(int errorCode)
+{
+   return StringFormat("Error %d: %s", errorCode, ErrorDescription(errorCode));
+}
+
+//+------------------------------------------------------------------+
+//| Normalize double with specified precision                        |
+//+------------------------------------------------------------------+
+double CSVUtils::NormalizeDouble(double value, int digits)
+{
+   return ::NormalizeDouble(value, digits);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate standard deviation for array                           |
+//+------------------------------------------------------------------+
+double CSVUtils::CalculateStandardDeviation(double &data[], int start, int count)
+{
+   if(count <= 1) return 0.0;
+   
+   double sum = 0.0;
+   double sumSquares = 0.0;
+   
+   for(int i = start; i < start + count; i++) {
+      sum += data[i];
+      sumSquares += data[i] * data[i];
+   }
+   
+   double mean = sum / count;
+   double variance = (sumSquares - sum * mean) / (count - 1);
+   
+   return MathSqrt(variance);
+}
+
+//+------------------------------------------------------------------+
+//| Round double to nearest integer                                  |
+//+------------------------------------------------------------------+
+int CSVUtils::Round(double value)
+{
+   return (int)MathRound(value);
+}
+
+//+------------------------------------------------------------------+
+//| Get point value for current symbol                               |
+//+------------------------------------------------------------------+
+double CSVUtils::GetPointValue()
+{
+   return SymbolInfoDouble(Symbol(), SYMBOL_POINT);
+}
+
+//+------------------------------------------------------------------+
+//| Get tick size for current symbol                                 |
+//+------------------------------------------------------------------+
+double CSVUtils::GetTickSize()
+{
+   return SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
+}
+
+//+------------------------------------------------------------------+
+//| Get minimum lot size for current symbol                          |
+//+------------------------------------------------------------------+
+double CSVUtils::GetMinLot()
+{
+   return SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MIN);
+}
+
+//+------------------------------------------------------------------+
+//| Get lot step for current symbol                                  |
+//+------------------------------------------------------------------+
+double CSVUtils::GetLotStep()
+{
+   return SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP);
+}
+
+//+------------------------------------------------------------------+
+//| Get maximum lot size for current symbol                          |
+//+------------------------------------------------------------------+
+double CSVUtils::GetMaxLot()
+{
+   return SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MAX);
+}
+
+//+------------------------------------------------------------------+
+//| Get contract size for current symbol                             |
+//+------------------------------------------------------------------+
+double CSVUtils::GetContractSize()
+{
+   return SymbolInfoDouble(Symbol(), SYMBOL_TRADE_CONTRACT_SIZE);
+}
+
+//+------------------------------------------------------------------+
+//| Convert pips to price                                           |
+//+------------------------------------------------------------------+
+double CSVUtils::PipsToPrice(double pips)
+{
+   // For XAUUSD, typically 1 pip = 0.01
+   // However, this can vary by broker
+   return pips * 0.01;
+}
+
+//+------------------------------------------------------------------+
+//| Convert price to pips                                           |
+//+------------------------------------------------------------------+
+double CSVUtils::PriceToPips(double price)
+{
+   // For XAUUSD, typically 0.01 = 1 pip
+   return price / 0.01;
+}
+
+//+------------------------------------------------------------------+
+//| Check if lot size is valid for current symbol                    |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsValidLotSize(double lotSize)
+{
+   double minLot = GetMinLot();
+   double maxLot = GetMaxLot();
+   double lotStep = GetLotStep();
+   
+   // Check if lot size is within min/max range
+   if(lotSize < minLot || lotSize > maxLot) {
+      return false;
+   }
+   
+   // Check if lot size is a multiple of lotStep
+   double remainder = MathMod(lotSize - minLot, lotStep);
+   
+   // Allow for floating point precision issues
+   return (MathAbs(remainder) < 0.000001 || MathAbs(remainder - lotStep) < 0.000001);
+}
+
+//+------------------------------------------------------------------+
+//| Normalize lot size to valid value for current symbol            |
+//+------------------------------------------------------------------+
+double CSVUtils::NormalizeLotSize(double lotSize)
+{
+   double minLot = GetMinLot();
+   double maxLot = GetMaxLot();
+   double lotStep = GetLotStep();
+   
+   // Ensure lot size is within range
+   lotSize = MathMax(minLot, MathMin(maxLot, lotSize));
+   
+   // Round to nearest valid lot size
+   int steps = (int)MathRound((lotSize - minLot) / lotStep);
+   lotSize = minLot + steps * lotStep;
+   
+   return NormalizeDouble(lotSize, 2);
+}
