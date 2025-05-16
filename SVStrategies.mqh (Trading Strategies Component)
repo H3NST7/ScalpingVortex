@@ -7,9 +7,9 @@
 #property link      "https://www.h3nst7.com"
 #property strict
 
-#include "SVUtils.mqh"
-#include "SVMarketAnalyzer.mqh"
-#include "SVRiskEngine.mqh"
+#include "ScalpingVortex\SVUtils.mqh"
+#include "ScalpingVortex\SVMarketAnalyzer.mqh"
+#include "ScalpingVortex\SVRiskEngine.mqh"
 
 // Base abstract class for strategies
 class CSVStrategyBase
