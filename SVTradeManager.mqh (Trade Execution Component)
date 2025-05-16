@@ -1,0 +1,873 @@
+//+------------------------------------------------------------------+
+//|                                             SVTradeManager.mqh |
+//|                                           Copyright 2025, H3nst7 |
+//|                                           https://www.h3nst7.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2025, H3nst7"
+#property link      "https://www.h3nst7.com"
+#property strict
+
+#include "SVUtils.mqh"
+#include "SVRiskEngine.mqh"
+#include <Trade\Trade.mqh>
+
+// Trade Manager class
+class CSVTradeManager
+{
+private:
+   // Trade configuration
+   ulong m_magicNumber;             // Magic number for trades
+   int m_slippage;                  // Maximum allowed slippage in points
+   int m_maxRetries;                // Maximum retries for failed orders
+   int m_retryDelayMs;              // Delay between retries in milliseconds
+   
+   // Trading objects
+   CTrade* m_trade;                 // MQL5 Trade class
+   CSVRiskEngine* m_riskEngine;     // Risk engine reference
+   
+   // Transaction tracking
+   ulong m_lastTransactionTime;     // Last transaction time
+   ulong m_lastDealTicket;          // Last deal ticket
+   int m_consecutiveErrors;         // Count of consecutive order errors
+   
+   // Statistics
+   int m_totalOrdersSent;           // Total orders sent
+   int m_successfulOrders;          // Successful orders
+   int m_failedOrders;              // Failed orders
+   
+   // Helper methods
+   bool ValidateOrderParameters(ENUM_ORDER_TYPE orderType, double volume, double price, double sl, double tp, string comment);
+   void HandleOrderResult(bool success, ulong resultTicket, string actionType);
+   int GetExponentialRetryDelay(int attempt);
+   
+public:
+   // Constructor and destructor
+   CSVTradeManager();
+   ~CSVTradeManager();
+   
+   // Initialization
+   bool Initialize(ulong magicNumber, CSVRiskEngine* riskEngine);
+   
+   // Order execution methods
+   bool ExecuteMarketOrder(ENUM_ORDER_TYPE orderType, SVSignalInfo &signal);
+   bool PlaceLimitOrder(ENUM_ORDER_TYPE orderType, SVSignalInfo &signal);
+   bool PlaceStopOrder(ENUM_ORDER_TYPE orderType, SVSignalInfo &signal);
+   
+   // Order management
+   bool ModifyPosition(ulong ticket, double newSL, double newTP, string comment = "");
+   bool ClosePosition(ulong ticket, string comment = "");
+   bool CloseAllPositions(string comment = "");
+   bool ClosePartialPosition(ulong ticket, double lotsPart, string comment = "");
+   
+   // Transaction processing
+   void ProcessTradeTransaction(const MqlTradeTransaction& trans, const MqlTradeRequest& request, const MqlTradeResult& result);
+   
+   // Getters and setters
+   void SetSlippage(int slippage) { m_slippage = slippage; }
+   void SetMaxRetries(int maxRetries) { m_maxRetries = maxRetries; }
+   void SetRetryDelay(int retryDelayMs) { m_retryDelayMs = retryDelayMs; }
+   
+   int GetTotalOrdersSent() const { return m_totalOrdersSent; }
+   int GetSuccessfulOrders() const { return m_successfulOrders; }
+   int GetFailedOrders() const { return m_failedOrders; }
+   int GetConsecutiveErrors() const { return m_consecutiveErrors; }
+};
+
+//+------------------------------------------------------------------+
+//| Constructor                                                      |
+//+------------------------------------------------------------------+
+CSVTradeManager::CSVTradeManager()
+{
+   m_magicNumber = 0;
+   m_slippage = 30;                  // Default 30 points slippage
+   m_maxRetries = 3;                 // Default 3 retries
+   m_retryDelayMs = 1000;            // Default 1000ms (1 second) delay
+   
+   m_trade = NULL;
+   m_riskEngine = NULL;
+   
+   m_lastTransactionTime = 0;
+   m_lastDealTicket = 0;
+   m_consecutiveErrors = 0;
+   
+   m_totalOrdersSent = 0;
+   m_successfulOrders = 0;
+   m_failedOrders = 0;
+}
+
+//+------------------------------------------------------------------+
+//| Destructor                                                       |
+//+------------------------------------------------------------------+
+CSVTradeManager::~CSVTradeManager()
+{
+   // Clean up trade object
+   if(m_trade != NULL) {
+      delete m_trade;
+      m_trade = NULL;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Initialize trade manager with parameters                         |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::Initialize(ulong magicNumber, CSVRiskEngine* riskEngine)
+{
+   if(riskEngine == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Risk engine reference is NULL");
+      return false;
+   }
+   
+   // Store parameters
+   m_magicNumber = magicNumber;
+   m_riskEngine = riskEngine;
+   
+   // Initialize trade object
+   m_trade = new CTrade();
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to create Trade object");
+      return false;
+   }
+   
+   // Configure trade object
+   m_trade.SetExpertMagicNumber(m_magicNumber);
+   m_trade.SetDeviationInPoints(m_slippage);
+   m_trade.SetMarginMode();
+   m_trade.SetTypeFillingBySymbol(Symbol());
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Trade Manager initialized with magic number: " + 
+                IntegerToString(m_magicNumber));
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Execute market order based on signal                             |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::ExecuteMarketOrder(ENUM_ORDER_TYPE orderType, SVSignalInfo &signal)
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   // Set symbol and entry price if not provided
+   string symbol = Symbol();
+   
+   if(signal.entryPrice <= 0.0) {
+      signal.entryPrice = (orderType == ORDER_TYPE_BUY) ? SymbolInfoDouble(symbol, SYMBOL_ASK) : 
+                                                          SymbolInfoDouble(symbol, SYMBOL_BID);
+   }
+   
+   // Validate order parameters
+   if(!ValidateOrderParameters(orderType, signal.lotSize, signal.entryPrice, signal.stopLoss, signal.takeProfit, signal.comment)) {
+      return false;
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Sending market order: " + CSVUtils::OrderTypeToString(orderType) + 
+                " " + DoubleToString(signal.lotSize, 2) + " lots at " + DoubleToString(signal.entryPrice, 5) + 
+                " SL: " + DoubleToString(signal.stopLoss, 5) + " TP: " + DoubleToString(signal.takeProfit, 5));
+   
+   // Attempt to send the order with retries
+   bool success = false;
+   ulong resultTicket = 0;
+   
+   for(int attempt = 0; attempt < m_maxRetries; attempt++) {
+      m_totalOrdersSent++;
+      
+      if(orderType == ORDER_TYPE_BUY) {
+         success = m_trade.Buy(signal.lotSize, symbol, 0.0, signal.stopLoss, signal.takeProfit, signal.comment);
+      } else if(orderType == ORDER_TYPE_SELL) {
+         success = m_trade.Sell(signal.lotSize, symbol, 0.0, signal.stopLoss, signal.takeProfit, signal.comment);
+      } else {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Invalid order type for market order: " + 
+                      IntegerToString(orderType));
+         break;
+      }
+      
+      // Check the result
+      if(success) {
+         resultTicket = m_trade.ResultOrder();
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Market order executed successfully, ticket: " + 
+                      IntegerToString(resultTicket));
+         break;
+      } else {
+         int errorCode = m_trade.ResultRetcode();
+         string errorDesc = CSVUtils::FormatError(errorCode);
+         
+         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Order execution failed, attempt " + 
+                      IntegerToString(attempt + 1) + "/" + IntegerToString(m_maxRetries) + 
+                      ": " + errorDesc);
+         
+         // Check if error is retryable
+         if(errorCode == TRADE_RETCODE_REQUOTE || 
+            errorCode == TRADE_RETCODE_CONNECTION || 
+            errorCode == TRADE_RETCODE_TIMEOUT) {
+            
+            // Exponential backoff for retries
+            int delayMs = GetExponentialRetryDelay(attempt);
+            Sleep(delayMs);
+            continue;
+         } else {
+            // Non-retryable error
+            break;
+         }
+      }
+   }
+   
+   // Handle the final result
+   HandleOrderResult(success, resultTicket, "Market order");
+   
+   return success;
+}
+
+//+------------------------------------------------------------------+
+//| Place a limit order based on signal                              |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::PlaceLimitOrder(ENUM_ORDER_TYPE orderType, SVSignalInfo &signal)
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   // Check if order type is valid for limit orders
+   if(orderType != ORDER_TYPE_BUY_LIMIT && orderType != ORDER_TYPE_SELL_LIMIT) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Invalid order type for limit order: " + 
+                   IntegerToString(orderType));
+      return false;
+   }
+   
+   string symbol = Symbol();
+   
+   // Validate order parameters
+   if(!ValidateOrderParameters(orderType, signal.lotSize, signal.entryPrice, signal.stopLoss, signal.takeProfit, signal.comment)) {
+      return false;
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Placing limit order: " + CSVUtils::OrderTypeToString(orderType) + 
+                " " + DoubleToString(signal.lotSize, 2) + " lots at " + DoubleToString(signal.entryPrice, 5) + 
+                " SL: " + DoubleToString(signal.stopLoss, 5) + " TP: " + DoubleToString(signal.takeProfit, 5));
+   
+   // Attempt to place the order with retries
+   bool success = false;
+   ulong resultTicket = 0;
+   
+   for(int attempt = 0; attempt < m_maxRetries; attempt++) {
+      m_totalOrdersSent++;
+      
+      // Place the limit order
+      success = m_trade.OrderOpen(
+         symbol,                 // Symbol
+         orderType,              // Order type
+         signal.lotSize,         // Volume
+         0.0,                    // Price (current)
+         signal.entryPrice,      // Limit price
+         signal.stopLoss,        // Stop Loss
+         signal.takeProfit,      // Take Profit
+         0,                      // Order lifetime
+         0,                      // Expiration time
+         signal.comment          // Comment
+      );
+      
+      // Check the result
+      if(success) {
+         resultTicket = m_trade.ResultOrder();
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Limit order placed successfully, ticket: " + 
+                      IntegerToString(resultTicket));
+         break;
+      } else {
+         int errorCode = m_trade.ResultRetcode();
+         string errorDesc = CSVUtils::FormatError(errorCode);
+         
+         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Limit order placement failed, attempt " + 
+                      IntegerToString(attempt + 1) + "/" + IntegerToString(m_maxRetries) + 
+                      ": " + errorDesc);
+         
+         // Retry only for specific errors
+         if(errorCode == TRADE_RETCODE_REQUOTE || 
+            errorCode == TRADE_RETCODE_CONNECTION || 
+            errorCode == TRADE_RETCODE_TIMEOUT) {
+            
+            // Exponential backoff for retries
+            int delayMs = GetExponentialRetryDelay(attempt);
+            Sleep(delayMs);
+            continue;
+         } else {
+            // Non-retryable error
+            break;
+         }
+      }
+   }
+   
+   // Handle the final result
+   HandleOrderResult(success, resultTicket, "Limit order");
+   
+   return success;
+}
+
+//+------------------------------------------------------------------+
+//| Place a stop order based on signal                               |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::PlaceStopOrder(ENUM_ORDER_TYPE orderType, SVSignalInfo &signal)
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   // Check if order type is valid for stop orders
+   if(orderType != ORDER_TYPE_BUY_STOP && orderType != ORDER_TYPE_SELL_STOP) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Invalid order type for stop order: " + 
+                   IntegerToString(orderType));
+      return false;
+   }
+   
+   string symbol = Symbol();
+   
+   // Validate order parameters
+   if(!ValidateOrderParameters(orderType, signal.lotSize, signal.entryPrice, signal.stopLoss, signal.takeProfit, signal.comment)) {
+      return false;
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Placing stop order: " + CSVUtils::OrderTypeToString(orderType) + 
+                " " + DoubleToString(signal.lotSize, 2) + " lots at " + DoubleToString(signal.entryPrice, 5) + 
+                " SL: " + DoubleToString(signal.stopLoss, 5) + " TP: " + DoubleToString(signal.takeProfit, 5));
+   
+   // Attempt to place the order with retries
+   bool success = false;
+   ulong resultTicket = 0;
+   
+   for(int attempt = 0; attempt < m_maxRetries; attempt++) {
+      m_totalOrdersSent++;
+      
+      // Place the stop order
+      success = m_trade.OrderOpen(
+         symbol,                 // Symbol
+         orderType,              // Order type
+         signal.lotSize,         // Volume
+         0.0,                    // Price (current)
+         signal.entryPrice,      // Stop price
+         signal.stopLoss,        // Stop Loss
+         signal.takeProfit,      // Take Profit
+         0,                      // Order lifetime
+         0,                      // Expiration time
+         signal.comment          // Comment
+      );
+      
+      // Check the result
+      if(success) {
+         resultTicket = m_trade.ResultOrder();
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Stop order placed successfully, ticket: " + 
+                      IntegerToString(resultTicket));
+         break;
+      } else {
+         int errorCode = m_trade.ResultRetcode();
+         string errorDesc = CSVUtils::FormatError(errorCode);
+         
+         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Stop order placement failed, attempt " + 
+                      IntegerToString(attempt + 1) + "/" + IntegerToString(m_maxRetries) + 
+                      ": " + errorDesc);
+         
+         // Retry only for specific errors
+         if(errorCode == TRADE_RETCODE_REQUOTE || 
+            errorCode == TRADE_RETCODE_CONNECTION || 
+            errorCode == TRADE_RETCODE_TIMEOUT) {
+            
+            // Exponential backoff for retries
+            int delayMs = GetExponentialRetryDelay(attempt);
+            Sleep(delayMs);
+            continue;
+         } else {
+            // Non-retryable error
+            break;
+         }
+      }
+   }
+   
+   // Handle the final result
+   HandleOrderResult(success, resultTicket, "Stop order");
+   
+   return success;
+}
+
+//+------------------------------------------------------------------+
+//| Modify an existing position's SL and TP                          |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::ModifyPosition(ulong ticket, double newSL, double newTP, string comment = "")
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   // Check if position exists
+   if(!PositionSelectByTicket(ticket)) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Position #" + IntegerToString(ticket) + " not found");
+      return false;
+   }
+   
+   // Check if position belongs to our EA
+   if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Position #" + IntegerToString(ticket) + 
+                   " does not belong to this EA");
+      return false;
+   }
+   
+   // Get current SL and TP
+   double currentSL = PositionGetDouble(POSITION_SL);
+   double currentTP = PositionGetDouble(POSITION_TP);
+   
+   // Check if modification is necessary
+   if(MathAbs(currentSL - newSL) < Point() && MathAbs(currentTP - newTP) < Point()) {
+      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "No modification needed for position #" + 
+                   IntegerToString(ticket));
+      return true;
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Modifying position #" + IntegerToString(ticket) + 
+                " SL: " + DoubleToString(newSL, 5) + " TP: " + DoubleToString(newTP, 5) + 
+                (comment != "" ? " Reason: " + comment : ""));
+   
+   // Attempt to modify with retries
+   bool success = false;
+   
+   for(int attempt = 0; attempt < m_maxRetries; attempt++) {
+      success = m_trade.PositionModify(ticket, newSL, newTP);
+      
+      if(success) {
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Position #" + IntegerToString(ticket) + 
+                      " modified successfully");
+         break;
+      } else {
+         int errorCode = m_trade.ResultRetcode();
+         string errorDesc = CSVUtils::FormatError(errorCode);
+         
+         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Position modification failed, attempt " + 
+                      IntegerToString(attempt + 1) + "/" + IntegerToString(m_maxRetries) + 
+                      ": " + errorDesc);
+         
+         // Retry only for specific errors
+         if(errorCode == TRADE_RETCODE_REQUOTE || 
+            errorCode == TRADE_RETCODE_CONNECTION || 
+            errorCode == TRADE_RETCODE_TIMEOUT) {
+            
+            // Exponential backoff for retries
+            int delayMs = GetExponentialRetryDelay(attempt);
+            Sleep(delayMs);
+            continue;
+         } else {
+            // Non-retryable error
+            break;
+         }
+      }
+   }
+   
+   if(success) {
+      m_consecutiveErrors = 0;
+   } else {
+      m_consecutiveErrors++;
+   }
+   
+   return success;
+}
+
+//+------------------------------------------------------------------+
+//| Close an existing position                                       |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::ClosePosition(ulong ticket, string comment = "")
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   // Check if position exists
+   if(!PositionSelectByTicket(ticket)) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Position #" + IntegerToString(ticket) + " not found");
+      return false;
+   }
+   
+   // Check if position belongs to our EA
+   if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Position #" + IntegerToString(ticket) + 
+                   " does not belong to this EA");
+      return false;
+   }
+   
+   double volume = PositionGetDouble(POSITION_VOLUME);
+   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Closing position #" + IntegerToString(ticket) + 
+                " " + (posType == POSITION_TYPE_BUY ? "BUY" : "SELL") + 
+                " " + DoubleToString(volume, 2) + " lots" + 
+                (comment != "" ? " Reason: " + comment : ""));
+   
+   // Attempt to close with retries
+   bool success = false;
+   
+   for(int attempt = 0; attempt < m_maxRetries; attempt++) {
+      success = m_trade.PositionClose(ticket);
+      
+      if(success) {
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Position #" + IntegerToString(ticket) + 
+                      " closed successfully");
+         break;
+      } else {
+         int errorCode = m_trade.ResultRetcode();
+         string errorDesc = CSVUtils::FormatError(errorCode);
+         
+         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Position close failed, attempt " + 
+                      IntegerToString(attempt + 1) + "/" + IntegerToString(m_maxRetries) + 
+                      ": " + errorDesc);
+         
+         // Retry only for specific errors
+         if(errorCode == TRADE_RETCODE_REQUOTE || 
+            errorCode == TRADE_RETCODE_CONNECTION || 
+            errorCode == TRADE_RETCODE_TIMEOUT) {
+            
+            // Exponential backoff for retries
+            int delayMs = GetExponentialRetryDelay(attempt);
+            Sleep(delayMs);
+            continue;
+         } else {
+            // Non-retryable error
+            break;
+         }
+      }
+   }
+   
+   if(success) {
+      m_consecutiveErrors = 0;
+   } else {
+      m_consecutiveErrors++;
+   }
+   
+   return success;
+}
+
+//+------------------------------------------------------------------+
+//| Close all positions for this EA                                  |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::CloseAllPositions(string comment = "")
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   int totalPositions = PositionsTotal();
+   int closedCount = 0;
+   
+   for(int i = totalPositions - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      
+      if(ticket <= 0) continue;
+      
+      // Check if position belongs to our EA
+      if(PositionSelectByTicket(ticket)) {
+         if(PositionGetInteger(POSITION_MAGIC) == m_magicNumber) {
+            if(ClosePosition(ticket, comment)) {
+               closedCount++;
+            }
+         }
+      }
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Closed " + IntegerToString(closedCount) + 
+                " positions" + (comment != "" ? " Reason: " + comment : ""));
+   
+   return (closedCount > 0);
+}
+
+//+------------------------------------------------------------------+
+//| Close a partial position                                         |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::ClosePartialPosition(ulong ticket, double lotsPart, string comment = "")
+{
+   if(m_trade == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Trade object is NULL");
+      return false;
+   }
+   
+   // Check if position exists
+   if(!PositionSelectByTicket(ticket)) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Position #" + IntegerToString(ticket) + " not found");
+      return false;
+   }
+   
+   // Check if position belongs to our EA
+   if(PositionGetInteger(POSITION_MAGIC) != m_magicNumber) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Position #" + IntegerToString(ticket) + 
+                   " does not belong to this EA");
+      return false;
+   }
+   
+   double volume = PositionGetDouble(POSITION_VOLUME);
+   
+   // Validate partial lot size
+   if(lotsPart <= 0.0 || lotsPart >= volume) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Invalid partial lot size: " + 
+                   DoubleToString(lotsPart, 2) + " for position volume: " + 
+                   DoubleToString(volume, 2));
+      return false;
+   }
+   
+   lotsPart = CSVUtils::NormalizeLotSize(lotsPart);
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Closing partial position #" + IntegerToString(ticket) + 
+                " " + DoubleToString(lotsPart, 2) + "/" + DoubleToString(volume, 2) + " lots" + 
+                (comment != "" ? " Reason: " + comment : ""));
+   
+   // Attempt to close partial position with retries
+   bool success = false;
+   
+   for(int attempt = 0; attempt < m_maxRetries; attempt++) {
+      success = m_trade.PositionClosePartial(ticket, lotsPart);
+      
+      if(success) {
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Partial position #" + IntegerToString(ticket) + 
+                      " closed successfully");
+         break;
+      } else {
+         int errorCode = m_trade.ResultRetcode();
+         string errorDesc = CSVUtils::FormatError(errorCode);
+         
+         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Partial position close failed, attempt " + 
+                      IntegerToString(attempt + 1) + "/" + IntegerToString(m_maxRetries) + 
+                      ": " + errorDesc);
+         
+         // Retry only for specific errors
+         if(errorCode == TRADE_RETCODE_REQUOTE || 
+            errorCode == TRADE_RETCODE_CONNECTION || 
+            errorCode == TRADE_RETCODE_TIMEOUT) {
+            
+            // Exponential backoff for retries
+            int delayMs = GetExponentialRetryDelay(attempt);
+            Sleep(delayMs);
+            continue;
+         } else {
+            // Non-retryable error
+            break;
+         }
+      }
+   }
+   
+   if(success) {
+      m_consecutiveErrors = 0;
+   } else {
+      m_consecutiveErrors++;
+   }
+   
+   return success;
+}
+
+//+------------------------------------------------------------------+
+//| Process trade transaction events                                 |
+//+------------------------------------------------------------------+
+void CSVTradeManager::ProcessTradeTransaction(const MqlTradeTransaction& trans, 
+                                             const MqlTradeRequest& request, 
+                                             const MqlTradeResult& result)
+{
+   // Filter only transactions for our EA
+   if(trans.magic != m_magicNumber) {
+      return;
+   }
+   
+   ENUM_TRADE_TRANSACTION_TYPE type = trans.type;
+   
+   switch(type) {
+      case TRADE_TRANSACTION_ORDER_ADD:
+         // New order added
+         CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "New order added, ticket: " + 
+                      IntegerToString(trans.order));
+         break;
+         
+      case TRADE_TRANSACTION_ORDER_DELETE:
+         // Order deleted
+         CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "Order deleted, ticket: " + 
+                      IntegerToString(trans.order));
+         break;
+         
+      case TRADE_TRANSACTION_ORDER_UPDATE:
+         // Order updated
+         CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "Order updated, ticket: " + 
+                      IntegerToString(trans.order));
+         break;
+         
+      case TRADE_TRANSACTION_HISTORY_ADD:
+         // Order added to history
+         CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "Order added to history, ticket: " + 
+                      IntegerToString(trans.order));
+         break;
+         
+      case TRADE_TRANSACTION_POSITION_MODIFY:
+         // Position modified
+         CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "Position modified, ticket: " + 
+                      IntegerToString(trans.position));
+         break;
+         
+      case TRADE_TRANSACTION_DEAL_ADD:
+         // New deal
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "New deal executed, ticket: " + 
+                      IntegerToString(trans.deal) + ", order: " + 
+                      IntegerToString(trans.order) + ", position: " + 
+                      IntegerToString(trans.position));
+         break;
+         
+      default:
+         // Other transaction types
+         break;
+   }
+   
+   // Store last transaction time
+   m_lastTransactionTime = GetTickCount64();
+   
+   // Store last deal ticket
+   if(type == TRADE_TRANSACTION_DEAL_ADD) {
+      m_lastDealTicket = trans.deal;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Validate order parameters                                        |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::ValidateOrderParameters(ENUM_ORDER_TYPE orderType, double volume, double price, double sl, double tp, string comment)
+{
+   string symbol = Symbol();
+   
+   // Check volume
+   double minVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double volumeStep = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   
+   if(volume < minVolume || volume > maxVolume) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Invalid volume: " + DoubleToString(volume, 2) + 
+                   " (min: " + DoubleToString(minVolume, 2) + ", max: " + 
+                   DoubleToString(maxVolume, 2) + ")");
+      return false;
+   }
+   
+   // Check volume step
+   double remainder = MathMod(volume - minVolume, volumeStep);
+   if(MathAbs(remainder) > 0.00001 && MathAbs(remainder - volumeStep) > 0.00001) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Volume not a multiple of step size: " + 
+                   DoubleToString(volume, 2) + " (step: " + DoubleToString(volumeStep, 2) + ")");
+      return false;
+   }
+   
+   // Check stop loss and take profit distances for market orders
+   if(orderType == ORDER_TYPE_BUY || orderType == ORDER_TYPE_SELL) {
+      double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+      double stopLevel = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(symbol, SYMBOL_POINT);
+      
+      if(orderType == ORDER_TYPE_BUY) {
+         // Check SL distance
+         if(sl > 0.0 && (ask - sl) <= stopLevel) {
+            CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Stop loss too close: " + 
+                         DoubleToString(sl, 5) + " (min distance: " + 
+                         DoubleToString(stopLevel, 5) + ")");
+            return false;
+         }
+         
+         // Check TP distance
+         if(tp > 0.0 && (tp - ask) <= stopLevel) {
+            CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Take profit too close: " + 
+                         DoubleToString(tp, 5) + " (min distance: " + 
+                         DoubleToString(stopLevel, 5) + ")");
+            return false;
+         }
+      } else if(orderType == ORDER_TYPE_SELL) {
+         // Check SL distance
+         if(sl > 0.0 && (sl - bid) <= stopLevel) {
+            CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Stop loss too close: " + 
+                         DoubleToString(sl, 5) + " (min distance: " + 
+                         DoubleToString(stopLevel, 5) + ")");
+            return false;
+         }
+         
+         // Check TP distance
+         if(tp > 0.0 && (bid - tp) <= stopLevel) {
+            CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Take profit too close: " + 
+                         DoubleToString(tp, 5) + " (min distance: " + 
+                         DoubleToString(stopLevel, 5) + ")");
+            return false;
+         }
+      }
+   }
+   
+   // Validate pending order price
+   if(orderType == ORDER_TYPE_BUY_LIMIT || orderType == ORDER_TYPE_SELL_LIMIT ||
+      orderType == ORDER_TYPE_BUY_STOP || orderType == ORDER_TYPE_SELL_STOP) {
+      
+      if(price <= 0.0) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Invalid price for pending order: " + 
+                      DoubleToString(price, 5));
+         return false;
+      }
+      
+      double ask = SymbolInfoDouble(symbol, SYMBOL_ASK);
+      double bid = SymbolInfoDouble(symbol, SYMBOL_BID);
+      double stopLevel = SymbolInfoInteger(symbol, SYMBOL_TRADE_STOPS_LEVEL) * SymbolInfoDouble(symbol, SYMBOL_POINT);
+      
+      // Check pending order price levels
+      if(orderType == ORDER_TYPE_BUY_LIMIT && (ask - price) <= stopLevel) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Buy limit price too close: " + 
+                      DoubleToString(price, 5) + " (min distance: " + 
+                      DoubleToString(stopLevel, 5) + ")");
+         return false;
+      } else if(orderType == ORDER_TYPE_SELL_LIMIT && (price - bid) <= stopLevel) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Sell limit price too close: " + 
+                      DoubleToString(price, 5) + " (min distance: " + 
+                      DoubleToString(stopLevel, 5) + ")");
+         return false;
+      } else if(orderType == ORDER_TYPE_BUY_STOP && (price - ask) <= stopLevel) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Buy stop price too close: " + 
+                      DoubleToString(price, 5) + " (min distance: " + 
+                      DoubleToString(stopLevel, 5) + ")");
+         return false;
+      } else if(orderType == ORDER_TYPE_SELL_STOP && (bid - price) <= stopLevel) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Sell stop price too close: " + 
+                      DoubleToString(price, 5) + " (min distance: " + 
+                      DoubleToString(stopLevel, 5) + ")");
+         return false;
+      }
+   }
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Handle order execution result                                    |
+//+------------------------------------------------------------------+
+void CSVTradeManager::HandleOrderResult(bool success, ulong resultTicket, string actionType)
+{
+   if(success) {
+      m_successfulOrders++;
+      m_consecutiveErrors = 0;
+   } else {
+      m_failedOrders++;
+      m_consecutiveErrors++;
+      
+      // Log warning if too many consecutive errors
+      if(m_consecutiveErrors >= 5) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Alert: " + IntegerToString(m_consecutiveErrors) + 
+                      " consecutive trade errors. Check connection and account status.");
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Get exponential delay for retries                                |
+//+------------------------------------------------------------------+
+int CSVTradeManager::GetExponentialRetryDelay(int attempt)
+{
+   // Base delay is m_retryDelayMs
+   // Each retry doubles the delay time with a small random factor
+   double randomFactor = 0.8 + 0.4 * MathRand() / 32767.0; // 0.8 to 1.2
+   
+   int delay = (int)(m_retryDelayMs * MathPow(2, attempt) * randomFactor);
+   
+   // Cap at 10 seconds maximum
+   return MathMin(delay, 10000);
+}
