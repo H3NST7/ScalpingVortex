@@ -1,87 +1,123 @@
 //+------------------------------------------------------------------+
-//|                                              SVTradeManager.mqh   |
+//|                                            SVTradeManager.mqh |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "ScalpingVortex"
+#property copyright "Copyright 2025, Scalping Vortex"
 #property link      "https://github.com/H3NST7/ScalpingVortex"
 #property version   "1.00"
-#property strict
 
-// Include required files
-#include "ScalpingVortex\SVUtils.mqh"
-#include "ScalpingVortex\SVPortfolio.mqh"
+#include <Trade\Trade.mqh>
+#include <Trade\PositionInfo.mqh>
+#include <Trade\OrderInfo.mqh>
+#include <Trade\SymbolInfo.mqh>
+#include <Arrays\List.mqh>
+#include "SVUtils.mqh"
+#include "SVPortfolio.mqh"
 
 //+------------------------------------------------------------------+
-//| Trade Manager class for order execution and management            |
+//| CSVTradeManager - Manages all trading operations                 |
 //+------------------------------------------------------------------+
 class CSVTradeManager
 {
 private:
-   // References to other components
-   CSVPortfolio*      m_portfolio;
+   // Trading components
+   CTrade*           m_trade;             // Trade execution object
+   CPositionInfo*    m_position;          // Position information
+   COrderInfo*       m_order;             // Order information
+   CSymbolInfo*      m_symbolInfo;        // Symbol information
+   CSVPortfolio*     m_portfolio;         // Portfolio management
    
-   // Trade parameters
-   int               m_magicNumber;
-   int               m_slippage;
-   string            m_tradeComment;
-   bool              m_isInitialized;
-   datetime          m_lastUpdateTime;
+   // Trading parameters
+   string            m_symbol;            // Trading symbol
+   int               m_magicNumber;       // Magic number for order identification
+   double            m_defaultLotSize;    // Default lot size
+   int               m_slippage;          // Allowed slippage in points
+   bool              m_useAutoLotSize;    // Use automatic lot size calculation
+   double            m_riskPercent;       // Risk percentage for auto lot size
    
-   // Risk management parameters
-   double            m_riskPerTrade;  // Risk percentage per trade
-   int               m_maxOpenPositions; // Maximum number of open positions
+   // Order tracking
+   CList             m_openOrders;        // List of open orders
+   CList             m_pendingOrders;     // List of pending orders
    
-   // Internal statistics
-   int               m_ordersOpened;
-   int               m_ordersClosed;
-   int               m_ordersModified;
+   // Trade statistics
+   int               m_totalTrades;       // Total number of trades executed
+   int               m_wonTrades;         // Number of winning trades
+   int               m_lostTrades;        // Number of losing trades
+   double            m_grossProfit;       // Gross profit
+   double            m_grossLoss;         // Gross loss
    
-   // Tracking pending order execution
-   int               m_lastTicket;
-   bool              m_pendingOrderExecution;
+   // Private methods
+   bool              ValidateTradeParameters(ENUM_ORDER_TYPE orderType, double volume, double price, double sl, double tp);
+   double            NormalizeLotSize(double volume);
+   double            CalculateAutoLotSize(double entryPrice, double stopLoss);
    
 public:
                      CSVTradeManager();
-                     ~CSVTradeManager();
+                    ~CSVTradeManager();
    
-   // Initialization and update methods
-   bool              Initialize(CSVPortfolio* portfolio, int magicNumber, int slippage);
-   bool              Update();
+   // Initialization
+   bool              Initialize(string symbol, int magic, CSVPortfolio* portfolio = NULL);
    
-   // Risk management
-   void              SetRiskPerTrade(double riskPercent) { m_riskPerTrade = riskPercent; }
-   double            GetRiskPerTrade() const { return m_riskPerTrade; }
+   // Order placement
+   ulong             OpenBuyOrder(double volume, double sl = 0.0, double tp = 0.0, string comment = "");
+   ulong             OpenSellOrder(double volume, double sl = 0.0, double tp = 0.0, string comment = "");
+   ulong             PlaceBuyLimit(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "");
+   ulong             PlaceSellLimit(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "");
+   ulong             PlaceBuyStop(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "");
+   ulong             PlaceSellStop(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "");
    
-   void              SetMaxOpenPositions(int max) { m_maxOpenPositions = max; }
-   int               GetMaxOpenPositions() const { return m_maxOpenPositions; }
+   // Order management
+   bool              ModifyPosition(ulong ticket, double sl, double tp);
+   bool              ModifyOrder(ulong ticket, double price, double sl, double tp);
+   bool              ClosePosition(ulong ticket, double volume = 0.0);
+   bool              DeleteOrder(ulong ticket);
+   bool              CloseAllPositions();
+   bool              DeleteAllOrders();
    
-   // Order execution methods
-   bool              OpenBuyOrder(string symbol, double lotSize, double stopLoss, double takeProfit);
-   bool              OpenSellOrder(string symbol, double lotSize, double stopLoss, double takeProfit);
-   bool              OpenBuyLimit(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit);
-   bool              OpenSellLimit(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit);
-   bool              OpenBuyStop(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit);
-   bool              OpenSellStop(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit);
+   // Position tracking
+   int               CountOpenPositions(int orderType = -1);
+   double            GetTotalPositionVolume(int orderType = -1);
+   bool              HasOpenPosition(string symbol, int orderType = -1);
+   double            GetPositionProfit(ulong ticket);
    
-   // Order management methods
-   bool              ModifyOrder(int ticket, double stopLoss, double takeProfit);
-   bool              CloseOrder(int ticket, double lots = 0.0);
-   bool              CloseAllOrders();
-   bool              DeletePendingOrder(int ticket);
-   bool              DeleteAllPendingOrders();
+   // Order tracking
+   int               CountPendingOrders(int orderType = -1);
+   bool              GetOrderDetails(ulong ticket, double &price, double &sl, double &tp);
    
-   // Status methods
-   bool              IsInitialized() const { return m_isInitialized; }
-   int               GetLastTicket() const { return m_lastTicket; }
-   bool              HasPendingExecution() const { return m_pendingOrderExecution; }
+   // Setting parameters
+   void              SetDefaultLotSize(double lotSize) { m_defaultLotSize = lotSize; }
+   void              SetSlippage(int slippage) { m_slippage = slippage; }
+   void              EnableAutoLotSize(bool enable, double riskPercent = 2.0) 
+                     { 
+                        m_useAutoLotSize = enable; 
+                        m_riskPercent = riskPercent; 
+                     }
    
-   // Order information methods
-   bool              GetOrderDetails(int ticket, int &type, double &openPrice, double &lots, 
-                                    double &stopLoss, double &takeProfit);
+   // Statistics
+   int               GetTotalTrades() const { return m_totalTrades; }
+   int               GetWonTrades() const { return m_wonTrades; }
+   int               GetLostTrades() const { return m_lostTrades; }
+   double            GetGrossProfit() const { return m_grossProfit; }
+   double            GetGrossLoss() const { return m_grossLoss; }
+   double            GetNetProfit() const { return m_grossProfit - m_grossLoss; }
+   double            GetProfitFactor() const { return m_grossLoss > 0 ? m_grossProfit / m_grossLoss : 0; }
+   double            GetWinRate() const { return m_totalTrades > 0 ? (double)m_wonTrades / m_totalTrades * 100.0 : 0; }
    
-private:
-   // Helper methods
-   bool              ValidateTradeParameters(string symbol, double lotSize, double stopLoss, double takeProfit);
-   bool              IsOrderStillValid(int ticket);
+   // Trade utility methods
+   double            GetAsk() const { return m_symbolInfo.Ask(); }
+   double            GetBid() const { return m_symbolInfo.Bid(); }
+   double            GetSpread() const { return m_symbolInfo.Spread(); }
+   double            GetTickSize() const { return m_symbolInfo.TickSize(); }
+   double            GetTickValue() const { return m_symbolInfo.TickValue(); }
+   double            GetPoint() const { return m_symbolInfo.Point(); }
+   int               GetDigits() const { return m_symbolInfo.Digits(); }
+   
+   // Trade result access
+   int               GetLastResultRetcode() const { return m_trade.ResultRetcode(); }
+   double            GetLastResultPrice() const { return m_trade.ResultPrice(); }
+   double            GetLastResultVolume() const { return m_trade.ResultVolume(); }
+   ulong             GetLastResultDeal() const { return m_trade.ResultDeal(); }
+   ulong             GetLastResultOrder() const { return m_trade.ResultOrder(); }
 };
 
 //+------------------------------------------------------------------+
@@ -89,23 +125,27 @@ private:
 //+------------------------------------------------------------------+
 CSVTradeManager::CSVTradeManager()
 {
+   // Initialize trading components
+   m_trade = new CTrade();
+   m_position = new CPositionInfo();
+   m_order = new COrderInfo();
+   m_symbolInfo = new CSymbolInfo();
    m_portfolio = NULL;
-   m_magicNumber = 12345; // Default magic number
-   m_slippage = 3;        // Default slippage
    
-   m_tradeComment = "ScalpingVortex";
-   m_isInitialized = false;
-   m_lastUpdateTime = 0;
+   // Initialize trading parameters
+   m_symbol = Symbol();
+   m_magicNumber = 123456;
+   m_defaultLotSize = 0.01;
+   m_slippage = 5;
+   m_useAutoLotSize = false;
+   m_riskPercent = 2.0;
    
-   m_riskPerTrade = 1.0;   // Default risk 1% per trade
-   m_maxOpenPositions = 5; // Default max 5 open positions
-   
-   m_ordersOpened = 0;
-   m_ordersClosed = 0;
-   m_ordersModified = 0;
-   
-   m_lastTicket = 0;
-   m_pendingOrderExecution = false;
+   // Initialize statistics
+   m_totalTrades = 0;
+   m_wonTrades = 0;
+   m_lostTrades = 0;
+   m_grossProfit = 0.0;
+   m_grossLoss = 0.0;
 }
 
 //+------------------------------------------------------------------+
@@ -113,770 +153,360 @@ CSVTradeManager::CSVTradeManager()
 //+------------------------------------------------------------------+
 CSVTradeManager::~CSVTradeManager()
 {
-   // We don't delete m_portfolio because it's owned elsewhere
+   // Clean up dynamically allocated objects
+   if(m_trade != NULL)
+   {
+      delete m_trade;
+      m_trade = NULL;
+   }
+   
+   if(m_position != NULL)
+   {
+      delete m_position;
+      m_position = NULL;
+   }
+   
+   if(m_order != NULL)
+   {
+      delete m_order;
+      m_order = NULL;
+   }
+   
+   if(m_symbolInfo != NULL)
+   {
+      delete m_symbolInfo;
+      m_symbolInfo = NULL;
+   }
+   
+   // Portfolio is externally managed so do not delete it
+   m_portfolio = NULL;
 }
 
 //+------------------------------------------------------------------+
 //| Initialize the trade manager                                     |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::Initialize(CSVPortfolio* portfolio, int magicNumber, int slippage)
+bool CSVTradeManager::Initialize(string symbol, int magic, CSVPortfolio* portfolio = NULL)
 {
-   if(portfolio == NULL)
-      return false;
-      
-   m_portfolio = portfolio;
-   m_magicNumber = magicNumber;
-   m_slippage = slippage;
+   // Set trading parameters
+   m_symbol = symbol;
+   m_magicNumber = magic;
    
-   m_lastUpdateTime = TimeCurrent();
-   m_isInitialized = true;
+   // Set external portfolio if provided
+   if(portfolio != NULL)
+      m_portfolio = portfolio;
+   
+   // Initialize symbol info
+   if(!m_symbolInfo.Name(symbol))
+   {
+      Print("Failed to set symbol name: ", symbol);
+      return false;
+   }
+   
+   // Configure trade object
+   m_trade.SetExpertMagicNumber(magic);
+   m_trade.SetMarginMode();
+   m_trade.SetTypeFillingBySymbol(symbol);
+   m_trade.SetDeviationInPoints(m_slippage);
+   
+   // Refresh symbol rates
+   if(!m_symbolInfo.RefreshRates())
+   {
+      Print("Failed to refresh rates for symbol: ", symbol);
+      return false;
+   }
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Update method - called on each tick                              |
+//| Open a buy position                                              |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::Update()
+ulong CSVTradeManager::OpenBuyOrder(double volume, double sl = 0.0, double tp = 0.0, string comment = "")
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Check for day change to reset daily stats
-   datetime currentTime = TimeCurrent();
-   MqlDateTime dtCurrent, dtLast;
-   TimeToStruct(currentTime, dtCurrent);
-   TimeToStruct(m_lastUpdateTime, dtLast);
+   // If auto lot size is enabled and a stop loss is provided, calculate lot size
+   if(m_useAutoLotSize && sl > 0.0)
+      volume = CalculateAutoLotSize(m_symbolInfo.Ask(), sl);
+   else if(volume <= 0.0)
+      volume = m_defaultLotSize;
    
-   if(dtCurrent.day != dtLast.day || dtCurrent.mon != dtLast.mon)
+   // Normalize volume
+   volume = NormalizeLotSize(volume);
+   
+   // Validate trade parameters
+   if(!ValidateTradeParameters(ORDER_TYPE_BUY, volume, m_symbolInfo.Ask(), sl, tp))
+      return 0;
+   
+   // Place buy order
+   if(!m_trade.Buy(volume, m_symbol, 0.0, sl, tp, comment))
    {
-      // Reset daily stats here if needed
+      Print("Failed to open buy position. Error code: ", m_trade.ResultRetcode());
+      return 0;
    }
    
-   m_lastUpdateTime = currentTime;
+   // Update statistics if order was successful
+   if(m_trade.ResultDeal() != 0)
+      m_totalTrades++;
    
-   return true;
+   return m_trade.ResultOrder();
 }
 
 //+------------------------------------------------------------------+
-//| Open a new buy order                                             |
+//| Open a sell position                                             |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::OpenBuyOrder(string symbol, double lotSize, double stopLoss, double takeProfit)
+ulong CSVTradeManager::OpenSellOrder(double volume, double sl = 0.0, double tp = 0.0, string comment = "")
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Validate parameters
-   if(!ValidateTradeParameters(symbol, lotSize, stopLoss, takeProfit))
-      return false;
-      
-   // Check if we haven't exceeded maximum open positions
-   int openPositions = 0;
-   if(m_portfolio != NULL)
+   // If auto lot size is enabled and a stop loss is provided, calculate lot size
+   if(m_useAutoLotSize && sl > 0.0)
+      volume = CalculateAutoLotSize(m_symbolInfo.Bid(), sl);
+   else if(volume <= 0.0)
+      volume = m_defaultLotSize;
+   
+   // Normalize volume
+   volume = NormalizeLotSize(volume);
+   
+   // Validate trade parameters
+   if(!ValidateTradeParameters(ORDER_TYPE_SELL, volume, m_symbolInfo.Bid(), sl, tp))
+      return 0;
+   
+   // Place sell order
+   if(!m_trade.Sell(volume, m_symbol, 0.0, sl, tp, comment))
    {
-      openPositions = m_portfolio.CountOpenPositions();
-      if(openPositions >= m_maxOpenPositions)
-      {
-         Print("Maximum number of open positions reached: ", m_maxOpenPositions);
-         return false;
-      }
+      Print("Failed to open sell position. Error code: ", m_trade.ResultRetcode());
+      return 0;
    }
    
-   // Calculate entry price
-   double price = MarketInfo(symbol, MODE_ASK);
+   // Update statistics if order was successful
+   if(m_trade.ResultDeal() != 0)
+      m_totalTrades++;
    
-   // Validate stop loss and take profit
-   double point = MarketInfo(symbol, MODE_POINT);
-   int stopsLevel = (int)MarketInfo(symbol, MODE_STOPLEVEL);
-   
-   if(stopLoss > 0 && (price - stopLoss) < stopsLevel * point)
-   {
-      stopLoss = price - stopsLevel * point;
-      Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-   }
-      
-   if(takeProfit > 0 && (takeProfit - price) < stopsLevel * point)
-   {
-      takeProfit = price + stopsLevel * point;
-      Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-   }
-   
-   // Set flags for order execution tracking
-   m_pendingOrderExecution = true;
-   
-   // Open the order
-   int ticket = OrderSend(symbol, OP_BUY, lotSize, price, m_slippage, stopLoss, takeProfit, m_tradeComment, m_magicNumber);
-   
-   if(ticket <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Error opening BUY order: ", errorCode, " - ", GetErrorDescription(errorCode));
-      m_pendingOrderExecution = false;
-      return false;
-   }
-   
-   // Update tracking
-   m_lastTicket = ticket;
-   m_ordersOpened++;
-   m_pendingOrderExecution = false;
-   
-   Print("BUY order opened successfully. Ticket: ", ticket, ", Price: ", price, ", Lots: ", lotSize);
-   
-   return true;
+   return m_trade.ResultOrder();
 }
 
 //+------------------------------------------------------------------+
-//| Open a new sell order                                            |
+//| Place a buy limit order                                          |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::OpenSellOrder(string symbol, double lotSize, double stopLoss, double takeProfit)
+ulong CSVTradeManager::PlaceBuyLimit(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "")
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Validate parameters
-   if(!ValidateTradeParameters(symbol, lotSize, stopLoss, takeProfit))
-      return false;
-      
-   // Check if we haven't exceeded maximum open positions
-   int openPositions = 0;
-   if(m_portfolio != NULL)
+   // Use default lot size if volume is not provided
+   if(volume <= 0.0)
+      volume = m_defaultLotSize;
+   
+   // Normalize volume
+   volume = NormalizeLotSize(volume);
+   
+   // Validate trade parameters
+   if(!ValidateTradeParameters(ORDER_TYPE_BUY_LIMIT, volume, price, sl, tp))
+      return 0;
+   
+   // Place buy limit order
+   if(!m_trade.BuyLimit(volume, price, m_symbol, sl, tp, 0, 0, comment))
    {
-      openPositions = m_portfolio.CountOpenPositions();
-      if(openPositions >= m_maxOpenPositions)
-      {
-         Print("Maximum number of open positions reached: ", m_maxOpenPositions);
-         return false;
-      }
+      Print("Failed to place buy limit order. Error code: ", m_trade.ResultRetcode());
+      return 0;
    }
    
-   // Calculate entry price
-   double price = MarketInfo(symbol, MODE_BID);
-   
-   // Validate stop loss and take profit
-   double point = MarketInfo(symbol, MODE_POINT);
-   int stopsLevel = (int)MarketInfo(symbol, MODE_STOPLEVEL);
-   
-   if(stopLoss > 0 && (stopLoss - price) < stopsLevel * point)
-   {
-      stopLoss = price + stopsLevel * point;
-      Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-   }
-      
-   if(takeProfit > 0 && (price - takeProfit) < stopsLevel * point)
-   {
-      takeProfit = price - stopsLevel * point;
-      Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-   }
-   
-   // Set flags for order execution tracking
-   m_pendingOrderExecution = true;
-   
-   // Open the order
-   int ticket = OrderSend(symbol, OP_SELL, lotSize, price, m_slippage, stopLoss, takeProfit, m_tradeComment, m_magicNumber);
-   
-   if(ticket <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Error opening SELL order: ", errorCode, " - ", GetErrorDescription(errorCode));
-      m_pendingOrderExecution = false;
-      return false;
-   }
-   
-   // Update tracking
-   m_lastTicket = ticket;
-   m_ordersOpened++;
-   m_pendingOrderExecution = false;
-   
-   Print("SELL order opened successfully. Ticket: ", ticket, ", Price: ", price, ", Lots: ", lotSize);
-   
-   return true;
+   return m_trade.ResultOrder();
 }
 
 //+------------------------------------------------------------------+
-//| Open a buy limit order                                           |
+//| Place a sell limit order                                         |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::OpenBuyLimit(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit)
+ulong CSVTradeManager::PlaceSellLimit(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "")
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Validate parameters
-   if(!ValidateTradeParameters(symbol, lotSize, stopLoss, takeProfit))
-      return false;
-      
-   // Validate limit order price (must be below market price)
-   double marketPrice = MarketInfo(symbol, MODE_ASK);
-   if(entryPrice >= marketPrice)
+   // Use default lot size if volume is not provided
+   if(volume <= 0.0)
+      volume = m_defaultLotSize;
+   
+   // Normalize volume
+   volume = NormalizeLotSize(volume);
+   
+   // Validate trade parameters
+   if(!ValidateTradeParameters(ORDER_TYPE_SELL_LIMIT, volume, price, sl, tp))
+      return 0;
+   
+   // Place sell limit order
+   if(!m_trade.SellLimit(volume, price, m_symbol, sl, tp, 0, 0, comment))
    {
-      Print("Buy limit price must be below current market price. Market: ", marketPrice, ", Entry: ", entryPrice);
-      return false;
+      Print("Failed to place sell limit order. Error code: ", m_trade.ResultRetcode());
+      return 0;
    }
    
-   // Validate stop loss and take profit
-   double point = MarketInfo(symbol, MODE_POINT);
-   int stopsLevel = (int)MarketInfo(symbol, MODE_STOPLEVEL);
-   
-   if(stopLoss > 0 && (entryPrice - stopLoss) < stopsLevel * point)
-   {
-      stopLoss = entryPrice - stopsLevel * point;
-      Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-   }
-      
-   if(takeProfit > 0 && (takeProfit - entryPrice) < stopsLevel * point)
-   {
-      takeProfit = entryPrice + stopsLevel * point;
-      Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-   }
-   
-   // Set flags for order execution tracking
-   m_pendingOrderExecution = true;
-   
-   // Open the limit order
-   int ticket = OrderSend(symbol, OP_BUYLIMIT, lotSize, entryPrice, m_slippage, stopLoss, takeProfit, m_tradeComment, m_magicNumber);
-   
-   if(ticket <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Error opening BUY LIMIT order: ", errorCode, " - ", GetErrorDescription(errorCode));
-      m_pendingOrderExecution = false;
-      return false;
-   }
-   
-   // Update tracking
-   m_lastTicket = ticket;
-   m_ordersOpened++;
-   m_pendingOrderExecution = false;
-   
-   Print("BUY LIMIT order placed successfully. Ticket: ", ticket, ", Entry Price: ", entryPrice, ", Lots: ", lotSize);
-   
-   return true;
+   return m_trade.ResultOrder();
 }
 
 //+------------------------------------------------------------------+
-//| Open a sell limit order                                          |
+//| Place a buy stop order                                           |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::OpenSellLimit(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit)
+ulong CSVTradeManager::PlaceBuyStop(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "")
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Validate parameters
-   if(!ValidateTradeParameters(symbol, lotSize, stopLoss, takeProfit))
-      return false;
-      
-   // Validate limit order price (must be above market price)
-   double marketPrice = MarketInfo(symbol, MODE_BID);
-   if(entryPrice <= marketPrice)
+   // Use default lot size if volume is not provided
+   if(volume <= 0.0)
+      volume = m_defaultLotSize;
+   
+   // Normalize volume
+   volume = NormalizeLotSize(volume);
+   
+   // Validate trade parameters
+   if(!ValidateTradeParameters(ORDER_TYPE_BUY_STOP, volume, price, sl, tp))
+      return 0;
+   
+   // Place buy stop order
+   if(!m_trade.BuyStop(volume, price, m_symbol, sl, tp, 0, 0, comment))
    {
-      Print("Sell limit price must be above current market price. Market: ", marketPrice, ", Entry: ", entryPrice);
-      return false;
+      Print("Failed to place buy stop order. Error code: ", m_trade.ResultRetcode());
+      return 0;
    }
    
-   // Validate stop loss and take profit
-   double point = MarketInfo(symbol, MODE_POINT);
-   int stopsLevel = (int)MarketInfo(symbol, MODE_STOPLEVEL);
-   
-   if(stopLoss > 0 && (stopLoss - entryPrice) < stopsLevel * point)
-   {
-      stopLoss = entryPrice + stopsLevel * point;
-      Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-   }
-      
-   if(takeProfit > 0 && (entryPrice - takeProfit) < stopsLevel * point)
-   {
-      takeProfit = entryPrice - stopsLevel * point;
-      Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-   }
-   
-   // Set flags for order execution tracking
-   m_pendingOrderExecution = true;
-   
-   // Open the limit order
-   int ticket = OrderSend(symbol, OP_SELLLIMIT, lotSize, entryPrice, m_slippage, stopLoss, takeProfit, m_tradeComment, m_magicNumber);
-   
-   if(ticket <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Error opening SELL LIMIT order: ", errorCode, " - ", GetErrorDescription(errorCode));
-      m_pendingOrderExecution = false;
-      return false;
-   }
-   
-   // Update tracking
-   m_lastTicket = ticket;
-   m_ordersOpened++;
-   m_pendingOrderExecution = false;
-   
-   Print("SELL LIMIT order placed successfully. Ticket: ", ticket, ", Entry Price: ", entryPrice, ", Lots: ", lotSize);
-   
-   return true;
+   return m_trade.ResultOrder();
 }
 
 //+------------------------------------------------------------------+
-//| Open a buy stop order                                            |
+//| Place a sell stop order                                          |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::OpenBuyStop(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit)
+ulong CSVTradeManager::PlaceSellStop(double volume, double price, double sl = 0.0, double tp = 0.0, string comment = "")
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Validate parameters
-   if(!ValidateTradeParameters(symbol, lotSize, stopLoss, takeProfit))
-      return false;
-      
-   // Validate stop order price (must be above market price)
-   double marketPrice = MarketInfo(symbol, MODE_ASK);
-   if(entryPrice <= marketPrice)
+   // Use default lot size if volume is not provided
+   if(volume <= 0.0)
+      volume = m_defaultLotSize;
+   
+   // Normalize volume
+   volume = NormalizeLotSize(volume);
+   
+   // Validate trade parameters
+   if(!ValidateTradeParameters(ORDER_TYPE_SELL_STOP, volume, price, sl, tp))
+      return 0;
+   
+   // Place sell stop order
+   if(!m_trade.SellStop(volume, price, m_symbol, sl, tp, 0, 0, comment))
    {
-      Print("Buy stop price must be above current market price. Market: ", marketPrice, ", Entry: ", entryPrice);
-      return false;
+      Print("Failed to place sell stop order. Error code: ", m_trade.ResultRetcode());
+      return 0;
    }
    
-   // Validate stop loss and take profit
-   double point = MarketInfo(symbol, MODE_POINT);
-   int stopsLevel = (int)MarketInfo(symbol, MODE_STOPLEVEL);
-   
-   if(stopLoss > 0 && (entryPrice - stopLoss) < stopsLevel * point)
-   {
-      stopLoss = entryPrice - stopsLevel * point;
-      Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-   }
-      
-   if(takeProfit > 0 && (takeProfit - entryPrice) < stopsLevel * point)
-   {
-      takeProfit = entryPrice + stopsLevel * point;
-      Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-   }
-   
-   // Set flags for order execution tracking
-   m_pendingOrderExecution = true;
-   
-   // Open the stop order
-   int ticket = OrderSend(symbol, OP_BUYSTOP, lotSize, entryPrice, m_slippage, stopLoss, takeProfit, m_tradeComment, m_magicNumber);
-   
-   if(ticket <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Error opening BUY STOP order: ", errorCode, " - ", GetErrorDescription(errorCode));
-      m_pendingOrderExecution = false;
-      return false;
-   }
-   
-   // Update tracking
-   m_lastTicket = ticket;
-   m_ordersOpened++;
-   m_pendingOrderExecution = false;
-   
-   Print("BUY STOP order placed successfully. Ticket: ", ticket, ", Entry Price: ", entryPrice, ", Lots: ", lotSize);
-   
-   return true;
+   return m_trade.ResultOrder();
 }
 
 //+------------------------------------------------------------------+
-//| Open a sell stop order                                           |
+//| Modify an existing position                                      |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::OpenSellStop(string symbol, double lotSize, double entryPrice, double stopLoss, double takeProfit)
+bool CSVTradeManager::ModifyPosition(ulong ticket, double sl, double tp)
 {
-   if(!m_isInitialized)
-      return false;
-      
-   // Validate parameters
-   if(!ValidateTradeParameters(symbol, lotSize, stopLoss, takeProfit))
-      return false;
-      
-   // Validate stop order price (must be below market price)
-   double marketPrice = MarketInfo(symbol, MODE_BID);
-   if(entryPrice >= marketPrice)
+   // Select the position to modify
+   if(!m_position.SelectByTicket(ticket))
    {
-      Print("Sell stop price must be below current market price. Market: ", marketPrice, ", Entry: ", entryPrice);
+      Print("Failed to select position with ticket: ", ticket);
       return false;
    }
    
-   // Validate stop loss and take profit
-   double point = MarketInfo(symbol, MODE_POINT);
-   int stopsLevel = (int)MarketInfo(symbol, MODE_STOPLEVEL);
-   
-   if(stopLoss > 0 && (stopLoss - entryPrice) < stopsLevel * point)
+   // Check if the position belongs to our EA
+   if(m_position.Magic() != m_magicNumber)
    {
-      stopLoss = entryPrice + stopsLevel * point;
-      Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-   }
-      
-   if(takeProfit > 0 && (entryPrice - takeProfit) < stopsLevel * point)
-   {
-      takeProfit = entryPrice - stopsLevel * point;
-      Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-   }
-   
-   // Set flags for order execution tracking
-   m_pendingOrderExecution = true;
-   
-   // Open the stop order
-   int ticket = OrderSend(symbol, OP_SELLSTOP, lotSize, entryPrice, m_slippage, stopLoss, takeProfit, m_tradeComment, m_magicNumber);
-   
-   if(ticket <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Error opening SELL STOP order: ", errorCode, " - ", GetErrorDescription(errorCode));
-      m_pendingOrderExecution = false;
+      Print("Position does not belong to this EA. Magic number: ", m_position.Magic());
       return false;
    }
    
-   // Update tracking
-   m_lastTicket = ticket;
-   m_ordersOpened++;
-   m_pendingOrderExecution = false;
-   
-   Print("SELL STOP order placed successfully. Ticket: ", ticket, ", Entry Price: ", entryPrice, ", Lots: ", lotSize);
-   
-   return true;
+   // Modify the position
+   return m_trade.PositionModify(ticket, sl, tp);
 }
 
 //+------------------------------------------------------------------+
 //| Modify an existing order                                         |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::ModifyOrder(int ticket, double stopLoss, double takeProfit)
+bool CSVTradeManager::ModifyOrder(ulong ticket, double price, double sl, double tp)
 {
-   if(!m_isInitialized || ticket <= 0)
-      return false;
-      
-   // Select the order
-   if(!OrderSelect(ticket, SELECT_BY_TICKET))
+   // Select the order to modify
+   if(!m_order.Select(ticket))
    {
-      int errorCode = GetLastError();
-      Print("Error selecting order #", ticket, " for modification: ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Failed to select order with ticket: ", ticket);
       return false;
    }
    
    // Check if the order belongs to our EA
-   if(OrderMagicNumber() != m_magicNumber)
+   if(m_order.Magic() != m_magicNumber)
    {
-      Print("Cannot modify order #", ticket, " - it does not belong to this EA.");
+      Print("Order does not belong to this EA. Magic number: ", m_order.Magic());
       return false;
-   }
-      
-   // Check if the order is still open
-   if(OrderCloseTime() > 0)
-   {
-      Print("Cannot modify order #", ticket, " - it is already closed.");
-      return false;
-   }
-      
-   // Get the current stop loss and take profit
-   double currentSL = OrderStopLoss();
-   double currentTP = OrderTakeProfit();
-   
-   // Check if modification is needed
-   if(MathAbs(currentSL - stopLoss) < 0.00001 && MathAbs(currentTP - takeProfit) < 0.00001)
-   {
-      Print("No modification needed for order #", ticket);
-      return true; // No modification needed
-   }
-      
-   // Validate stop loss and take profit based on order type
-   int orderType = OrderType();
-   double openPrice = OrderOpenPrice();
-   double point = MarketInfo(OrderSymbol(), MODE_POINT);
-   int stopsLevel = (int)MarketInfo(OrderSymbol(), MODE_STOPLEVEL);
-   
-   // Adjust stop loss and take profit for market distance requirements
-   if(orderType == OP_BUY || orderType == OP_BUYLIMIT || orderType == OP_BUYSTOP)
-   {
-      // For buy orders, SL must be below, TP must be above
-      if(stopLoss > 0 && (openPrice - stopLoss) < stopsLevel * point)
-      {
-         stopLoss = openPrice - stopsLevel * point;
-         Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-      }
-         
-      if(takeProfit > 0 && (takeProfit - openPrice) < stopsLevel * point)
-      {
-         takeProfit = openPrice + stopsLevel * point;
-         Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-      }
-   }
-   else if(orderType == OP_SELL || orderType == OP_SELLLIMIT || orderType == OP_SELLSTOP)
-   {
-      // For sell orders, SL must be above, TP must be below
-      if(stopLoss > 0 && (stopLoss - openPrice) < stopsLevel * point)
-      {
-         stopLoss = openPrice + stopsLevel * point;
-         Print("Stop Loss adjusted to meet minimum distance requirement: ", stopLoss);
-      }
-         
-      if(takeProfit > 0 && (openPrice - takeProfit) < stopsLevel * point)
-      {
-         takeProfit = openPrice - stopsLevel * point;
-         Print("Take Profit adjusted to meet minimum distance requirement: ", takeProfit);
-      }
    }
    
    // Modify the order
-   bool result = OrderModify(ticket, openPrice, stopLoss, takeProfit, 0);
-   
-   if(!result)
-   {
-      int errorCode = GetLastError();
-      Print("Error modifying order #", ticket, ": ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   m_ordersModified++;
-   Print("Order #", ticket, " modified successfully. New SL: ", stopLoss, ", New TP: ", takeProfit);
-   
-   return true;
+   return m_trade.OrderModify(ticket, price, sl, tp, 0, 0);
 }
 
 //+------------------------------------------------------------------+
-//| Close a specific order                                           |
+//| Close a position                                                 |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::CloseOrder(int ticket, double lots = 0.0)
+bool CSVTradeManager::ClosePosition(ulong ticket, double volume = 0.0)
 {
-   if(!m_isInitialized || ticket <= 0)
-      return false;
-      
-   // Select the order
-   if(!OrderSelect(ticket, SELECT_BY_TICKET))
+   // Select the position to close
+   if(!m_position.SelectByTicket(ticket))
    {
-      int errorCode = GetLastError();
-      Print("Error selecting order #", ticket, " for closing: ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Failed to select position with ticket: ", ticket);
       return false;
    }
    
-   // Check if the order belongs to our EA
-   if(OrderMagicNumber() != m_magicNumber)
+   // Check if the position belongs to our EA
+   if(m_position.Magic() != m_magicNumber)
    {
-      Print("Cannot close order #", ticket, " - it does not belong to this EA.");
-      return false;
-   }
-      
-   // Check if the order is still open
-   if(OrderCloseTime() > 0)
-   {
-      Print("Order #", ticket, " is already closed.");
-      return true;
-   }
-      
-   // Get order details
-   int orderType = OrderType();
-   double orderLots = OrderLots();
-   
-   // For pending orders, use Delete instead of Close
-   if(orderType > OP_SELL)
-   {
-      return DeletePendingOrder(ticket);
-   }
-   
-   // If partial close is requested, validate the lot size
-   if(lots > 0 && lots < orderLots)
-   {
-      // Adjust the lots if needed
-      double minLot = MarketInfo(OrderSymbol(), MODE_MINLOT);
-      double lotStep = MarketInfo(OrderSymbol(), MODE_LOTSTEP);
-      
-      // Ensure the lot size is valid
-      lots = NormalizeDouble(MathFloor(lots / lotStep) * lotStep, 2);
-      
-      if(lots < minLot)
-      {
-         Print("Cannot close ", lots, " lots - less than minimum lot size (", minLot, ")");
-         return false;
-      }
-      
-      if(orderLots - lots < minLot)
-      {
-         Print("Remaining lots would be less than minimum. Closing entire position.");
-         lots = orderLots;
-      }
-   }
-   else
-   {
-      // Close the entire position
-      lots = orderLots;
-   }
-   
-   // Get closing price based on order type
-   double closePrice;
-   
-   if(orderType == OP_BUY)
-      closePrice = MarketInfo(OrderSymbol(), MODE_BID);
-   else if(orderType == OP_SELL)
-      closePrice = MarketInfo(OrderSymbol(), MODE_ASK);
-   else
-      return false; // Should never happen due to the check above
-      
-   // Close the order
-   bool result = OrderClose(ticket, lots, closePrice, m_slippage);
-   
-   if(!result)
-   {
-      int errorCode = GetLastError();
-      Print("Error closing order #", ticket, ": ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Position does not belong to this EA. Magic number: ", m_position.Magic());
       return false;
    }
    
-   m_ordersClosed++;
-   Print("Order #", ticket, " closed successfully. Lots: ", lots, ", Price: ", closePrice);
+   // If volume is not specified or invalid, close the entire position
+   if(volume <= 0.0 || volume >= m_position.Volume())
+      return m_trade.PositionClose(ticket);
    
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Close all open orders                                            |
-//+------------------------------------------------------------------+
-bool CSVTradeManager::CloseAllOrders()
-{
-   if(!m_isInitialized)
-      return false;
-      
-   bool result = true;
-   
-   // First, count the orders to build an array of tickets
-   int count = 0;
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == m_magicNumber)
-         {
-            count++;
-         }
-      }
-   }
-   
-   if(count == 0)
-   {
-      Print("No orders to close.");
-      return true; // No orders to close
-   }
-      
-   int tickets[];
-   ArrayResize(tickets, count);
-   
-   // Fill the array with order tickets
-   int idx = 0;
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == m_magicNumber)
-         {
-            tickets[idx++] = OrderTicket();
-         }
-      }
-   }
-   
-   // Close each order
-   for(int i = 0; i < count; i++)
-   {
-      if(!CloseOrder(tickets[i]))
-      {
-         result = false;
-         Print("Failed to close order #", tickets[i]);
-      }
-   }
-   
-   return result;
+   // Partially close the position
+   return m_trade.PositionClosePartial(ticket, volume);
 }
 
 //+------------------------------------------------------------------+
 //| Delete a pending order                                           |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::DeletePendingOrder(int ticket)
+bool CSVTradeManager::DeleteOrder(ulong ticket)
 {
-   if(!m_isInitialized || ticket <= 0)
-      return false;
-      
-   // Select the order
-   if(!OrderSelect(ticket, SELECT_BY_TICKET))
+   // Select the order to delete
+   if(!m_order.Select(ticket))
    {
-      int errorCode = GetLastError();
-      Print("Error selecting order #", ticket, " for deletion: ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Failed to select order with ticket: ", ticket);
       return false;
    }
    
    // Check if the order belongs to our EA
-   if(OrderMagicNumber() != m_magicNumber)
+   if(m_order.Magic() != m_magicNumber)
    {
-      Print("Cannot delete order #", ticket, " - it does not belong to this EA.");
-      return false;
-   }
-      
-   // Check if the order is still pending
-   int orderType = OrderType();
-   if(orderType <= OP_SELL)
-   {
-      Print("Order #", ticket, " is not a pending order.");
-      return false;
-   }
-      
-   // Delete the pending order
-   bool result = OrderDelete(ticket);
-   
-   if(!result)
-   {
-      int errorCode = GetLastError();
-      Print("Error deleting order #", ticket, ": ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Order does not belong to this EA. Magic number: ", m_order.Magic());
       return false;
    }
    
-   Print("Pending order #", ticket, " deleted successfully.");
-   
-   return true;
+   // Delete the order
+   return m_trade.OrderDelete(ticket);
 }
 
 //+------------------------------------------------------------------+
-//| Delete all pending orders                                        |
+//| Close all open positions                                         |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::DeleteAllPendingOrders()
+bool CSVTradeManager::CloseAllPositions()
 {
-   if(!m_isInitialized)
-      return false;
-      
    bool result = true;
    
-   // First, count the pending orders to build an array of tickets
-   int count = 0;
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
+   // Loop through all positions
+   for(int i = PositionsTotal() - 1; i >= 0; i--)
    {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == m_magicNumber && OrderType() > OP_SELL)
-         {
-            count++;
-         }
-      }
-   }
-   
-   if(count == 0)
-   {
-      Print("No pending orders to delete.");
-      return true; // No pending orders to delete
-   }
+      // Select position by index
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
       
-   int tickets[];
-   ArrayResize(tickets, count);
-   
-   // Fill the array with order tickets
-   int idx = 0;
-   for(int i = OrdersTotal() - 1; i >= 0; i--)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
+      // Check if position belongs to our symbol and magic number
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol || 
+         PositionGetInteger(POSITION_MAGIC) != m_magicNumber)
+         continue;
+      
+      // Close the position
+      if(!m_trade.PositionClose(ticket))
       {
-         if(OrderMagicNumber() == m_magicNumber && OrderType() > OP_SELL)
-         {
-            tickets[idx++] = OrderTicket();
-         }
-      }
-   }
-   
-   // Delete each pending order
-   for(int i = 0; i < count; i++)
-   {
-      if(!DeletePendingOrder(tickets[i]))
-      {
+         Print("Failed to close position with ticket: ", ticket, ". Error code: ", m_trade.ResultRetcode());
          result = false;
-         Print("Failed to delete pending order #", tickets[i]);
       }
    }
    
@@ -884,28 +514,186 @@ bool CSVTradeManager::DeleteAllPendingOrders()
 }
 
 //+------------------------------------------------------------------+
-//| Get details of an order                                          |
+//| Delete all pending orders                                        |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::GetOrderDetails(int ticket, int &type, double &openPrice, double &lots, 
-                                    double &stopLoss, double &takeProfit)
+bool CSVTradeManager::DeleteAllOrders()
 {
-   if(ticket <= 0)
-      return false;
-      
-   // Select the order
-   if(!OrderSelect(ticket, SELECT_BY_TICKET))
+   bool result = true;
+   
+   // Loop through all orders
+   for(int i = OrdersTotal() - 1; i >= 0; i--)
    {
-      int errorCode = GetLastError();
-      Print("Error selecting order #", ticket, " for details: ", errorCode, " - ", GetErrorDescription(errorCode));
+      // Select order by index
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      
+      // Check if order belongs to our symbol and magic number
+      if(OrderGetString(ORDER_SYMBOL) != m_symbol || 
+         OrderGetInteger(ORDER_MAGIC) != m_magicNumber)
+         continue;
+      
+      // Delete the order
+      if(!m_trade.OrderDelete(ticket))
+      {
+         Print("Failed to delete order with ticket: ", ticket, ". Error code: ", m_trade.ResultRetcode());
+         result = false;
+      }
+   }
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Count open positions                                             |
+//+------------------------------------------------------------------+
+int CSVTradeManager::CountOpenPositions(int orderType = -1)
+{
+   int count = 0;
+   
+   // Loop through all positions
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      // Select position by index
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      
+      // Check if position belongs to our symbol and magic number
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol || 
+         PositionGetInteger(POSITION_MAGIC) != m_magicNumber)
+         continue;
+      
+      // Check position type if specified
+      if(orderType >= 0 && PositionGetInteger(POSITION_TYPE) != orderType)
+         continue;
+      
+      count++;
+   }
+   
+   return count;
+}
+
+//+------------------------------------------------------------------+
+//| Get total position volume                                        |
+//+------------------------------------------------------------------+
+double CSVTradeManager::GetTotalPositionVolume(int orderType = -1)
+{
+   double volume = 0.0;
+   
+   // Loop through all positions
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      // Select position by index
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      
+      // Check if position belongs to our symbol and magic number
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol || 
+         PositionGetInteger(POSITION_MAGIC) != m_magicNumber)
+         continue;
+      
+      // Check position type if specified
+      if(orderType >= 0 && PositionGetInteger(POSITION_TYPE) != orderType)
+         continue;
+      
+      // Add position volume
+      volume += PositionGetDouble(POSITION_VOLUME);
+   }
+   
+   return volume;
+}
+
+//+------------------------------------------------------------------+
+//| Check if there is an open position for the symbol                |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::HasOpenPosition(string symbol, int orderType = -1)
+{
+   // Loop through all positions
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      // Select position by index
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+      
+      // Check if position belongs to the specified symbol and our magic number
+      if(PositionGetString(POSITION_SYMBOL) != symbol || 
+         PositionGetInteger(POSITION_MAGIC) != m_magicNumber)
+         continue;
+      
+      // Check position type if specified
+      if(orderType >= 0 && PositionGetInteger(POSITION_TYPE) != orderType)
+         continue;
+      
+      return true;
+   }
+   
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Get position profit                                              |
+//+------------------------------------------------------------------+
+double CSVTradeManager::GetPositionProfit(ulong ticket)
+{
+   // Select the position
+   if(!m_position.SelectByTicket(ticket))
+   {
+      Print("Failed to select position with ticket: ", ticket);
+      return 0.0;
+   }
+   
+   return m_position.Profit();
+}
+
+//+------------------------------------------------------------------+
+//| Count pending orders                                             |
+//+------------------------------------------------------------------+
+int CSVTradeManager::CountPendingOrders(int orderType = -1)
+{
+   int count = 0;
+   
+   // Loop through all orders
+   for(int i = 0; i < OrdersTotal(); i++)
+   {
+      // Select order by index
+      ulong ticket = OrderGetTicket(i);
+      if(ticket == 0)
+         continue;
+      
+      // Check if order belongs to our symbol and magic number
+      if(OrderGetString(ORDER_SYMBOL) != m_symbol || 
+         OrderGetInteger(ORDER_MAGIC) != m_magicNumber)
+         continue;
+      
+      // Check order type if specified
+      if(orderType >= 0 && OrderGetInteger(ORDER_TYPE) != orderType)
+         continue;
+      
+      count++;
+   }
+   
+   return count;
+}
+
+//+------------------------------------------------------------------+
+//| Get order details                                                |
+//+------------------------------------------------------------------+
+bool CSVTradeManager::GetOrderDetails(ulong ticket, double &price, double &sl, double &tp)
+{
+   // Select the order
+   if(!m_order.Select(ticket))
+   {
+      Print("Failed to select order with ticket: ", ticket);
       return false;
    }
    
    // Get order details
-   type = OrderType();
-   openPrice = OrderOpenPrice();
-   lots = OrderLots();
-   stopLoss = OrderStopLoss();
-   takeProfit = OrderTakeProfit();
+   price = m_order.PriceOpen();
+   sl = m_order.StopLoss();
+   tp = m_order.TakeProfit();
    
    return true;
 }
@@ -913,55 +701,251 @@ bool CSVTradeManager::GetOrderDetails(int ticket, int &type, double &openPrice, 
 //+------------------------------------------------------------------+
 //| Validate trade parameters                                        |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::ValidateTradeParameters(string symbol, double lotSize, double stopLoss, double takeProfit)
+bool CSVTradeManager::ValidateTradeParameters(ENUM_ORDER_TYPE orderType, double volume, double price, double sl, double tp)
 {
-   // Check symbol
-   if(symbol == "" || symbol == NULL)
+   // Refresh symbol info
+   if(!m_symbolInfo.RefreshRates())
    {
-      Print("Invalid symbol");
+      Print("Failed to refresh rates for symbol: ", m_symbol);
       return false;
    }
    
-   // Check lot size
-   double minLot = MarketInfo(symbol, MODE_MINLOT);
-   double maxLot = MarketInfo(symbol, MODE_MAXLOT);
+   // Check if volume is within allowed range
+   double minVolume = m_symbolInfo.LotsMin();
+   double maxVolume = m_symbolInfo.LotsMax();
+   double stepVolume = m_symbolInfo.LotsStep();
    
-   if(lotSize < minLot || lotSize > maxLot)
+   if(volume < minVolume || volume > maxVolume)
    {
-      Print("Invalid lot size: ", lotSize, ". Must be between ", minLot, " and ", maxLot);
+      Print("Invalid volume: ", volume, ". Allowed range: ", minVolume, " - ", maxVolume);
       return false;
    }
    
-   // Lot size must be a multiple of the lot step
-   double lotStep = MarketInfo(symbol, MODE_LOTSTEP);
-   if(MathAbs(MathMod(lotSize, lotStep)) > 0.00001)
+   // Check if volume is a multiple of step
+   if(MathAbs(volume - minVolume) / stepVolume != (int)((volume - minVolume) / stepVolume))
    {
-      Print("Invalid lot size: ", lotSize, ". Must be a multiple of ", lotStep);
+      Print("Invalid volume: ", volume, ". Must be a multiple of step: ", stepVolume);
       return false;
+   }
+   
+   // Get stop level in points
+   int stopLevel = (int)m_symbolInfo.StopsLevel();
+   double point = m_symbolInfo.Point();
+   
+   // Check if price is valid for the order type
+   switch(orderType)
+   {
+      case ORDER_TYPE_BUY:
+         // For buy orders, we use the ask price
+         break;
+         
+      case ORDER_TYPE_SELL:
+         // For sell orders, we use the bid price
+         break;
+         
+      case ORDER_TYPE_BUY_LIMIT:
+         // Buy limit price must be below the ask price
+         if(price >= m_symbolInfo.Ask())
+         {
+            Print("Invalid buy limit price: ", price, ". Must be below ask price: ", m_symbolInfo.Ask());
+            return false;
+         }
+         
+         // Check if price is within the stop level
+         if(m_symbolInfo.Ask() - price < stopLevel * point)
+         {
+            Print("Invalid buy limit price: ", price, ". Too close to current price. Minimum distance: ", stopLevel * point);
+            return false;
+         }
+         break;
+         
+      case ORDER_TYPE_SELL_LIMIT:
+         // Sell limit price must be above the bid price
+         if(price <= m_symbolInfo.Bid())
+         {
+            Print("Invalid sell limit price: ", price, ". Must be above bid price: ", m_symbolInfo.Bid());
+            return false;
+         }
+         
+         // Check if price is within the stop level
+         if(price - m_symbolInfo.Bid() < stopLevel * point)
+         {
+            Print("Invalid sell limit price: ", price, ". Too close to current price. Minimum distance: ", stopLevel * point);
+            return false;
+         }
+         break;
+         
+      case ORDER_TYPE_BUY_STOP:
+         // Buy stop price must be above the ask price
+         if(price <= m_symbolInfo.Ask())
+         {
+            Print("Invalid buy stop price: ", price, ". Must be above ask price: ", m_symbolInfo.Ask());
+            return false;
+         }
+         
+         // Check if price is within the stop level
+         if(price - m_symbolInfo.Ask() < stopLevel * point)
+         {
+            Print("Invalid buy stop price: ", price, ". Too close to current price. Minimum distance: ", stopLevel * point);
+            return false;
+         }
+         break;
+         
+      case ORDER_TYPE_SELL_STOP:
+         // Sell stop price must be below the bid price
+         if(price >= m_symbolInfo.Bid())
+         {
+            Print("Invalid sell stop price: ", price, ". Must be below bid price: ", m_symbolInfo.Bid());
+            return false;
+         }
+         
+         // Check if price is within the stop level
+         if(m_symbolInfo.Bid() - price < stopLevel * point)
+         {
+            Print("Invalid sell stop price: ", price, ". Too close to current price. Minimum distance: ", stopLevel * point);
+            return false;
+         }
+         break;
+         
+      default:
+         Print("Invalid order type: ", EnumToString(orderType));
+         return false;
+   }
+   
+   // Check if stop loss and take profit are valid
+   if(sl > 0.0)
+   {
+      // Check if stop loss is valid for the order type
+      switch(orderType)
+      {
+         case ORDER_TYPE_BUY:
+         case ORDER_TYPE_BUY_STOP:
+         case ORDER_TYPE_BUY_LIMIT:
+            // Stop loss for buy orders must be below entry price
+            if(sl >= price)
+            {
+               Print("Invalid stop loss: ", sl, ". Must be below entry price: ", price);
+               return false;
+            }
+            
+            // Check if stop loss is within the stop level
+            if(price - sl < stopLevel * point)
+            {
+               Print("Invalid stop loss: ", sl, ". Too close to entry price. Minimum distance: ", stopLevel * point);
+               return false;
+            }
+            break;
+            
+         case ORDER_TYPE_SELL:
+         case ORDER_TYPE_SELL_STOP:
+         case ORDER_TYPE_SELL_LIMIT:
+            // Stop loss for sell orders must be above entry price
+            if(sl <= price)
+            {
+               Print("Invalid stop loss: ", sl, ". Must be above entry price: ", price);
+               return false;
+            }
+            
+            // Check if stop loss is within the stop level
+            if(sl - price < stopLevel * point)
+            {
+               Print("Invalid stop loss: ", sl, ". Too close to entry price. Minimum distance: ", stopLevel * point);
+               return false;
+            }
+            break;
+      }
+   }
+   
+   if(tp > 0.0)
+   {
+      // Check if take profit is valid for the order type
+      switch(orderType)
+      {
+         case ORDER_TYPE_BUY:
+         case ORDER_TYPE_BUY_STOP:
+         case ORDER_TYPE_BUY_LIMIT:
+            // Take profit for buy orders must be above entry price
+            if(tp <= price)
+            {
+               Print("Invalid take profit: ", tp, ". Must be above entry price: ", price);
+               return false;
+            }
+            
+            // Check if take profit is within the stop level
+            if(tp - price < stopLevel * point)
+            {
+               Print("Invalid take profit: ", tp, ". Too close to entry price. Minimum distance: ", stopLevel * point);
+               return false;
+            }
+            break;
+            
+         case ORDER_TYPE_SELL:
+         case ORDER_TYPE_SELL_STOP:
+         case ORDER_TYPE_SELL_LIMIT:
+            // Take profit for sell orders must be below entry price
+            if(tp >= price)
+            {
+               Print("Invalid take profit: ", tp, ". Must be below entry price: ", price);
+               return false;
+            }
+            
+            // Check if take profit is within the stop level
+            if(price - tp < stopLevel * point)
+            {
+               Print("Invalid take profit: ", tp, ". Too close to entry price. Minimum distance: ", stopLevel * point);
+               return false;
+            }
+            break;
+      }
    }
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Check if an order is still valid and open                        |
+//| Normalize lot size                                               |
 //+------------------------------------------------------------------+
-bool CSVTradeManager::IsOrderStillValid(int ticket)
+double CSVTradeManager::NormalizeLotSize(double volume)
 {
-   if(ticket <= 0)
-      return false;
-      
-   // Try to select the order
-   if(!OrderSelect(ticket, SELECT_BY_TICKET))
-      return false;
-      
-   // Check if it's our order
-   if(OrderMagicNumber() != m_magicNumber)
-      return false;
-      
-   // Check if it's still open
-   if(OrderCloseTime() > 0)
-      return false;
-      
-   return true;
+   // Refresh symbol info
+   if(!m_symbolInfo.RefreshRates())
+      return volume;
+   
+   // Get lot size constraints
+   double minVolume = m_symbolInfo.LotsMin();
+   double maxVolume = m_symbolInfo.LotsMax();
+   double stepVolume = m_symbolInfo.LotsStep();
+   
+   // Normalize volume
+   volume = MathMax(minVolume, volume);
+   volume = MathMin(maxVolume, volume);
+   volume = MathRound(volume / stepVolume) * stepVolume;
+   
+   return NormalizeDouble(volume, 2);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate automatic lot size based on risk percentage            |
+//+------------------------------------------------------------------+
+double CSVTradeManager::CalculateAutoLotSize(double entryPrice, double stopLoss)
+{
+   // If portfolio is not set, use account balance
+   double accountEquity = (m_portfolio != NULL) ? m_portfolio.GetAccountEquity() : AccountInfoDouble(ACCOUNT_EQUITY);
+   
+   // Calculate risk amount
+   double riskAmount = accountEquity * m_riskPercent / 100.0;
+   
+   // Calculate point value
+   double tickSize = m_symbolInfo.TickSize();
+   double tickValue = m_symbolInfo.TickValue();
+   double pointValue = tickValue / tickSize;
+   
+   // Calculate stop loss distance in points
+   double slDistance = MathAbs(entryPrice - stopLoss) / m_symbolInfo.Point();
+   
+   // Calculate lot size
+   double lotSize = riskAmount / (slDistance * pointValue);
+   
+   // Normalize lot size
+   return NormalizeLotSize(lotSize);
 }
