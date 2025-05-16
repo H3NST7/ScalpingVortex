@@ -1,95 +1,117 @@
 //+------------------------------------------------------------------+
-//|                                                      SVCore.mqh   |
+//|                                                     SVCore.mqh |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "ScalpingVortex"
+#property copyright "Copyright 2025, Scalping Vortex"
 #property link      "https://github.com/H3NST7/ScalpingVortex"
 #property version   "1.00"
-#property strict
 
-// Include core system components
-#include "SVUtils.mqh"
-#include "SVPortfolio.mqh"
-#include "SVTradeManager.mqh"
-#include "SVMarketAnalyzer.mqh"
-#include "SVDashboard.mqh"
+#include <Trade\Trade.mqh>
+#include <Trade\PositionInfo.mqh>
+#include <Trade\OrderInfo.mqh>
+#include <Trade\SymbolInfo.mqh>
+#include <Trade\AccountInfo.mqh>
+
+// Forward declarations
+class CSVMarketAnalyzer;
+class CSVTradeManager;
+class CSVRiskEngine;
+class CSVPortfolio;
+class CSVOptimizer;
+
 //+------------------------------------------------------------------+
-//| Core class for the ScalpingVortex EA system                      |
+//| CSVCore class - Main core management class for the EA            |
 //+------------------------------------------------------------------+
 class CSVCore
 {
 private:
    // System components
-   CSVPortfolio*      m_portfolio;
-   CSVTradeManager*   m_tradeManager;
-   CSVMarketAnalyzer* m_marketAnalyzer;
+   CSymbolInfo        m_symbolInfo;       // Symbol information
+   CAccountInfo       m_accountInfo;      // Account information
+   
+   // Main components
+   CSVMarketAnalyzer* m_marketAnalyzer;   // Market analysis component
+   CSVTradeManager*   m_tradeManager;     // Trade execution component
+   CSVRiskEngine*     m_riskEngine;       // Risk management component
+   CSVPortfolio*      m_portfolio;        // Portfolio management component
+   CSVOptimizer*      m_optimizer;        // Strategy optimization component
    
    // System state
-   bool              m_isInitialized;
-   bool              m_isEnabled;
-   bool              m_isBacktesting;
+   bool               m_isInitialized;    // Flag indicating if the EA is initialized
+   bool               m_isTesting;        // Flag indicating if running in strategy tester
+   bool               m_isTradingEnabled; // Flag indicating if trading is enabled
+   bool               m_isDebugMode;      // Flag indicating if debug mode is enabled
    
    // Configuration
-   int               m_magicNumber;
-   int               m_slippage;
-   double            m_defaultRiskPerTrade;
-   string            m_symbol;
-   ENUM_TIMEFRAMES   m_timeframe;
+   string             m_symbolName;       // Symbol to trade
+   ENUM_TIMEFRAMES    m_timeframe;        // Timeframe to analyze
+   int                m_magicNumber;      // Magic number for order identification
+   int                m_maxConcurrentTrades; // Maximum number of concurrent trades
+   bool               m_allowLongs;       // Flag indicating if long trades are allowed
+   bool               m_allowShorts;      // Flag indicating if short trades are allowed
+   double             m_minVolatilityATR; // Minimum volatility required to trade
    
-   // Operational parameters
-   int               m_maxConcurrentTrades;
-   bool              m_allowLongs;
-   bool              m_allowShorts;
-   double            m_minVolatility;
+   // State tracking
+   datetime           m_startTime;        // Time when EA was started
+   int                m_lastError;        // Last error code
+   string             m_lastErrorDesc;    // Last error description
    
-   // Performance tracking
-   datetime          m_startTime;
-   datetime          m_lastUpdateTime;
-   int               m_totalSignalsGenerated;
-   int               m_validSignalsCount;
-   int               m_profitableSignalsCount;
+   // Private utility methods
+   void               InitializeComponents();
+   void               UpdateSystem();
+   void               CheckTradingConditions();
+   void               GenerateSignals();
+   void               ExecuteSignal();
    
+   // Error handling
+   string             GetErrorDescription(int errorCode);
+   void               SetLastError(int errorCode, string description);
+   
+   // Formatting helpers
+   string             FormatDouble(double value, int digits);
+   string             FormatTime(datetime time);
+
 public:
-                     CSVCore();
-                     ~CSVCore();
+                      CSVCore();          // Constructor
+                     ~CSVCore();          // Destructor
    
-   // Core methods
-   bool              Initialize(int magicNumber, int slippage, double riskPerTrade, string symbol = NULL, ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT);
-   void              Cleanup();
-   bool              ProcessTick();
-   bool              ProcessTimer();
+   // Core initialization and execution
+   bool               Initialize(string symbol, ENUM_TIMEFRAMES tf, int magic);
+   bool               ProcessTick();
+   bool               ProcessTimer();
    
-   // System configuration
-   void              EnableTrading() { m_isEnabled = true; }
-   void              DisableTrading() { m_isEnabled = false; }
-   bool              IsInitialized() const { return m_isInitialized; }
-   bool              IsEnabled() const { return m_isEnabled; }
+   // Getters
+   bool               IsInitialized() const { return m_isInitialized; }
+   bool               IsTradingEnabled() const { return m_isTradingEnabled; }
+   string             GetSymbol() const { return m_symbolName; }
+   ENUM_TIMEFRAMES    GetTimeframe() const { return m_timeframe; }
+   int                GetMagicNumber() const { return m_magicNumber; }
    
-   void              SetMaxConcurrentTrades(int max) { m_maxConcurrentTrades = max; }
-   int               GetMaxConcurrentTrades() const { return m_maxConcurrentTrades; }
+   // Configuration methods
+   void               SetMaxConcurrentTrades(int maxTrades) { m_maxConcurrentTrades = maxTrades; }
+   void               SetDirectionalBias(bool allowLongs, bool allowShorts) 
+                     { 
+                        m_allowLongs = allowLongs; 
+                        m_allowShorts = allowShorts; 
+                     }
+   void               SetMinimumVolatility(double minVolatilityATR) { m_minVolatilityATR = minVolatilityATR; }
    
-   void              SetDirectionalBias(bool allowLongs, bool allowShorts) { m_allowLongs = allowLongs; m_allowShorts = allowShorts; }
-   void              SetMinimumVolatility(double atrThreshold) { m_minVolatility = atrThreshold; }
+   // Trade control
+   void               EnableTrading() { m_isTradingEnabled = true; }
+   void               DisableTrading() { m_isTradingEnabled = false; }
    
    // Component access
-   CSVPortfolio*     GetPortfolio() { return m_portfolio; }
-   CSVTradeManager*  GetTradeManager() { return m_tradeManager; }
-   CSVMarketAnalyzer* GetMarketAnalyzer() { return m_marketAnalyzer; }
+   CSVMarketAnalyzer* GetMarketAnalyzer() const { return m_marketAnalyzer; }
+   CSVTradeManager*   GetTradeManager() const { return m_tradeManager; }
+   CSVPortfolio*      GetPortfolio() const { return m_portfolio; }
+   CSVRiskEngine*     GetRiskEngine() const { return m_riskEngine; }
+   CSVOptimizer*      GetOptimizer() const { return m_optimizer; }
    
-   // System metrics
-   int               GetSignalCount() const { return m_totalSignalsGenerated; }
-   double            GetSignalQuality() const;
-   double            GetSystemPerformance() const;
-   
-private:
-   // Internal processing methods
-   bool              InitializeComponents();
-   bool              CheckTradingConditions();
-   bool              GenerateSignals(int &signalType, double &entryPrice, double &stopLoss, double &takeProfit);
-   bool              ExecuteSignal(int signalType, double entryPrice, double stopLoss, double takeProfit);
-   bool              UpdateSystem();
-   
-   // Position sizing and risk management
-   double            CalculatePositionSize(double stopLossPrice);
+   // System utility methods
+   int                GetLastError() const { return m_lastError; }
+   string             GetLastErrorDescription() const { return m_lastErrorDesc; }
+   datetime           GetStartTime() const { return m_startTime; }
+   bool               GetIsTesting() const { return m_isTesting; }
 };
 
 //+------------------------------------------------------------------+
@@ -97,35 +119,27 @@ private:
 //+------------------------------------------------------------------+
 CSVCore::CSVCore()
 {
-   // Initialize pointers
-   m_portfolio = NULL;
-   m_tradeManager = NULL;
-   m_marketAnalyzer = NULL;
-   
-   // Default state
    m_isInitialized = false;
-   m_isEnabled = false;
-   m_isBacktesting = IsBacktesting();
+   m_isTradingEnabled = false;
+   m_isDebugMode = false;
+   m_isTesting = MQLInfoInteger(MQL_TESTER);
+   m_startTime = TimeCurrent();
+   m_lastError = 0;
+   m_lastErrorDesc = "";
    
-   // Default configuration
-   m_magicNumber = 12345;
-   m_slippage = 3;
-   m_defaultRiskPerTrade = 1.0; // 1% risk per trade
-   m_symbol = Symbol();
+   m_symbolName = Symbol();
    m_timeframe = Period();
-   
-   // Default operational parameters
-   m_maxConcurrentTrades = 5;
+   m_magicNumber = 123456;
+   m_maxConcurrentTrades = 3;
    m_allowLongs = true;
    m_allowShorts = true;
-   m_minVolatility = 0.0;
+   m_minVolatilityATR = 0.0;
    
-   // Performance tracking
-   m_startTime = 0;
-   m_lastUpdateTime = 0;
-   m_totalSignalsGenerated = 0;
-   m_validSignalsCount = 0;
-   m_profitableSignalsCount = 0;
+   m_marketAnalyzer = NULL;
+   m_portfolio = NULL;
+   m_tradeManager = NULL;
+   m_riskEngine = NULL;
+   m_optimizer = NULL;
 }
 
 //+------------------------------------------------------------------+
@@ -133,414 +147,182 @@ CSVCore::CSVCore()
 //+------------------------------------------------------------------+
 CSVCore::~CSVCore()
 {
-   Cleanup();
+   // Clean up allocated components
+   if(m_marketAnalyzer != NULL) { delete m_marketAnalyzer; m_marketAnalyzer = NULL; }
+   if(m_portfolio != NULL) { delete m_portfolio; m_portfolio = NULL; }
+   if(m_tradeManager != NULL) { delete m_tradeManager; m_tradeManager = NULL; }
+   if(m_riskEngine != NULL) { delete m_riskEngine; m_riskEngine = NULL; }
+   if(m_optimizer != NULL) { delete m_optimizer; m_optimizer = NULL; }
 }
 
 //+------------------------------------------------------------------+
-//| Initialize the system                                            |
+//| Initialize the EA                                                |
 //+------------------------------------------------------------------+
-bool CSVCore::Initialize(int magicNumber, int slippage, double riskPerTrade, string symbol = NULL, ENUM_TIMEFRAMES timeframe = PERIOD_CURRENT)
+bool CSVCore::Initialize(string symbol, ENUM_TIMEFRAMES tf, int magic)
 {
-   // Clean up previous resources if any
-   Cleanup();
+   // Store basic parameters
+   m_symbolName = symbol;
+   m_timeframe = tf;
+   m_magicNumber = magic;
    
-   // Set configuration
-   m_magicNumber = magicNumber;
-   m_slippage = slippage;
-   m_defaultRiskPerTrade = riskPerTrade;
-   
-   m_symbol = (symbol == NULL || symbol == "") ? Symbol() : symbol;
-   m_timeframe = (timeframe == PERIOD_CURRENT) ? Period() : timeframe;
-   
-   // Initialize system components
-   if(!InitializeComponents())
+   // Initialize the symbol info
+   if(!m_symbolInfo.Name(symbol))
    {
-      Print("Failed to initialize system components");
-      Cleanup();
+      SetLastError(ERR_MARKET_UNKNOWN_SYMBOL, "Failed to set symbol name: " + symbol);
       return false;
    }
    
-   // Set state
+   // Refresh rates for accurate pricing
+   if(!m_symbolInfo.RefreshRates())
+   {
+      SetLastError(ERR_UNKNOWN_SYMBOL, "Failed to refresh rates for symbol: " + symbol);
+      return false;
+   }
+   
+   // Initialize components
+   InitializeComponents();
+   
+   // Set initialization flag
    m_isInitialized = true;
-   m_isEnabled = true;
-   
-   // Set timestamps
-   m_startTime = TimeCurrent();
-   m_lastUpdateTime = m_startTime;
-   
-   Print("ScalpingVortex Core initialized. Magic: ", m_magicNumber, ", Symbol: ", m_symbol, ", Timeframe: ", EnumToString(m_timeframe));
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Initialize all system components                                 |
+//| Initialize system components                                     |
 //+------------------------------------------------------------------+
-bool CSVCore::InitializeComponents()
+void CSVCore::InitializeComponents()
 {
-   // Create portfolio component
+   // Create and initialize components
    m_portfolio = new CSVPortfolio();
-   
-   if(m_portfolio == NULL)
-   {
-      Print("Failed to create portfolio component");
-      return false;
-   }
-   
-   if(!m_portfolio.Initialize())
-   {
-      Print("Failed to initialize portfolio component");
-      return false;
-   }
-   
-   // Create trade manager component
-   m_tradeManager = new CSVTradeManager();
-   
-   if(m_tradeManager == NULL)
-   {
-      Print("Failed to create trade manager component");
-      return false;
-   }
-   
-   if(!m_tradeManager.Initialize(m_portfolio, m_magicNumber, m_slippage))
-   {
-      Print("Failed to initialize trade manager component");
-      return false;
-   }
-   
-   // Configure trade manager
-   m_tradeManager.SetRiskPerTrade(m_defaultRiskPerTrade);
-   m_tradeManager.SetMaxOpenPositions(m_maxConcurrentTrades);
-   
-   // Create market analyzer component
    m_marketAnalyzer = new CSVMarketAnalyzer();
+   m_tradeManager = new CSVTradeManager();
+   m_riskEngine = new CSVRiskEngine();
+   m_optimizer = new CSVOptimizer();
    
-   if(m_marketAnalyzer == NULL)
-   {
-      Print("Failed to create market analyzer component");
-      return false;
-   }
-   
-   // Initialize market analyzer with default parameters
-   if(!m_marketAnalyzer.Initialize(20, 50, 14, 14, 20, 2.0, 10))
-   {
-      Print("Failed to initialize market analyzer component");
-      return false;
-   }
-   
-   return true;
+   // Additional initialization logic will be implemented in these classes
 }
 
 //+------------------------------------------------------------------+
-//| Clean up resources                                               |
-//+------------------------------------------------------------------+
-void CSVCore::Cleanup()
-{
-   // Clean up the market analyzer
-   if(m_marketAnalyzer != NULL)
-   {
-      delete m_marketAnalyzer;
-      m_marketAnalyzer = NULL;
-   }
-   
-   // Clean up the trade manager
-   if(m_tradeManager != NULL)
-   {
-      delete m_tradeManager;
-      m_tradeManager = NULL;
-   }
-   
-   // Clean up the portfolio
-   if(m_portfolio != NULL)
-   {
-      delete m_portfolio;
-      m_portfolio = NULL;
-   }
-   
-   m_isInitialized = false;
-   m_isEnabled = false;
-}
-
-//+------------------------------------------------------------------+
-//| Process tick event - main EA execution point                     |
+//| Process a new tick                                               |
 //+------------------------------------------------------------------+
 bool CSVCore::ProcessTick()
 {
-   if(!m_isInitialized || !m_isEnabled)
-      return false;
-      
-   // Update system components
-   if(!UpdateSystem())
-      return false;
-      
-   // Check if trading conditions are met
-   if(!CheckTradingConditions())
-      return false;
-      
-   // Generate signals
-   int signalType = 0;
-   double entryPrice = 0.0;
-   double stopLoss = 0.0;
-   double takeProfit = 0.0;
-   
-   if(GenerateSignals(signalType, entryPrice, stopLoss, takeProfit))
+   if(!m_isInitialized)
    {
-      // Execute signal
-      ExecuteSignal(signalType, entryPrice, stopLoss, takeProfit);
+      SetLastError(ERR_NOT_INITIALIZED, "EA is not initialized");
+      return false;
    }
    
-   m_lastUpdateTime = TimeCurrent();
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Process timer event - periodic tasks                             |
-//+------------------------------------------------------------------+
-bool CSVCore::ProcessTimer()
-{
-   if(!m_isInitialized || !m_isEnabled)
-      return false;
-      
    // Update system state
    UpdateSystem();
    
-   // Perform periodic tasks
-   // - Update trade statistics
-   if(m_portfolio != NULL)
-      m_portfolio.UpdateTradeStatistics();
-      
-   // - Check for trade management (trailing stops, partial closes, etc.)
-   
-   m_lastUpdateTime = TimeCurrent();
+   // Check trading conditions
+   if(m_isTradingEnabled)
+   {
+      CheckTradingConditions();
+      GenerateSignals();
+      ExecuteSignal();
+   }
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Update system components                                         |
+//| Update system state                                              |
 //+------------------------------------------------------------------+
-bool CSVCore::UpdateSystem()
+void CSVCore::UpdateSystem()
 {
-   // Update portfolio
-   if(m_portfolio != NULL)
-   {
-      if(!m_portfolio.Update())
-      {
-         Print("Failed to update portfolio");
-         return false;
-      }
-   }
-   else
-      return false;
-      
-   // Update trade manager
-   if(m_tradeManager != NULL)
-   {
-      if(!m_tradeManager.Update())
-      {
-         Print("Failed to update trade manager");
-         return false;
-      }
-   }
-   else
-      return false;
-      
-   // Update market analyzer
-   if(m_marketAnalyzer != NULL)
-   {
-      if(!m_marketAnalyzer.Update(m_symbol, m_timeframe))
-      {
-         Print("Failed to update market analyzer");
-         return false;
-      }
-   }
-   else
-      return false;
-      
-   return true;
+   // Refresh rates
+   m_symbolInfo.RefreshRates();
+   
+   // Update system components
+   // Additional logic will be implemented in component classes
 }
 
 //+------------------------------------------------------------------+
-//| Check if trading conditions are met                              |
+//| Check trading conditions                                         |
 //+------------------------------------------------------------------+
-bool CSVCore::CheckTradingConditions()
+void CSVCore::CheckTradingConditions()
 {
-   // Check if market is open
-   if(!IsMarketOpen(m_symbol))
+   // Check if trading is allowed
+   if(!m_accountInfo.TradeAllowed())
    {
-      //Print("Market is closed for ", m_symbol);
-      return false;
+      DisableTrading();
+      SetLastError(ERR_TRADE_NOT_ALLOWED, "Trading is not allowed");
+      return;
    }
    
-   // Check if we're within trading hours
-   if(!IsTradingHour())
-   {
-      //Print("Outside of trading hours");
-      return false;
-   }
-   
-   // Check for maximum concurrent trades
-   int openPositions = m_portfolio.CountOpenPositions();
-   if(openPositions >= m_maxConcurrentTrades)
-   {
-      //Print("Maximum concurrent trades reached: ", m_maxConcurrentTrades);
-      return false;
-   }
-   
-   // Check minimum volatility
-   double atr = m_marketAnalyzer.GetAverageTrueRange(m_symbol, m_timeframe);
-   if(atr < m_minVolatility)
-   {
-      //Print("Volatility too low: ", atr, " < ", m_minVolatility);
-      return false;
-   }
-   
-   return true;
+   // Check market volatility
+   // Logic will be implemented in MarketAnalyzer class
 }
 
 //+------------------------------------------------------------------+
 //| Generate trading signals                                         |
 //+------------------------------------------------------------------+
-bool CSVCore::GenerateSignals(int &signalType, double &entryPrice, double &stopLoss, double &takeProfit)
+void CSVCore::GenerateSignals()
 {
-   // Reset signal type
-   signalType = 0; // 0 = no signal, 1 = buy, -1 = sell
-   
-   // Get current market data
-   double bid = MarketInfo(m_symbol, MODE_BID);
-   double ask = MarketInfo(m_symbol, MODE_ASK);
-   double point = MarketInfo(m_symbol, MODE_POINT);
-   int digits = (int)MarketInfo(m_symbol, MODE_DIGITS);
-   
-   // Get ATR for stop loss and take profit calculation
-   double atr = m_marketAnalyzer.GetAverageTrueRange(m_symbol, m_timeframe);
-   
-   // Default stop loss and take profit distances (2 ATR, 3 ATR)
-   double slDistance = atr * 2.0;
-   double tpDistance = atr * 3.0;
-   
-   // Check for buy signal
-   if(m_allowLongs && m_marketAnalyzer.IsTrendUp(m_symbol, m_timeframe))
-   {
-      // Additional conditions for buy entry
-      if(m_marketAnalyzer.GetRSI(m_symbol, m_timeframe) < 70.0 &&
-         m_marketAnalyzer.IsVolumeIncreasing(m_symbol, m_timeframe))
-      {
-         signalType = 1; // Buy signal
-         entryPrice = ask;
-         stopLoss = NormalizeDouble(entryPrice - slDistance, digits);
-         takeProfit = NormalizeDouble(entryPrice + tpDistance, digits);
-         
-         m_totalSignalsGenerated++;
-         return true;
-      }
-   }
-   
-   // Check for sell signal
-   if(m_allowShorts && m_marketAnalyzer.IsTrendDown(m_symbol, m_timeframe))
-   {
-      // Additional conditions for sell entry
-      if(m_marketAnalyzer.GetRSI(m_symbol, m_timeframe) > 30.0 &&
-         m_marketAnalyzer.IsVolumeIncreasing(m_symbol, m_timeframe))
-      {
-         signalType = -1; // Sell signal
-         entryPrice = bid;
-         stopLoss = NormalizeDouble(entryPrice + slDistance, digits);
-         takeProfit = NormalizeDouble(entryPrice - tpDistance, digits);
-         
-         m_totalSignalsGenerated++;
-         return true;
-      }
-   }
-   
-   return false;
+   // Generate trading signals based on market analysis
+   // Logic will be implemented in MarketAnalyzer class
 }
 
 //+------------------------------------------------------------------+
-//| Execute a trading signal                                         |
+//| Execute trading signals                                          |
 //+------------------------------------------------------------------+
-bool CSVCore::ExecuteSignal(int signalType, double entryPrice, double stopLoss, double takeProfit)
+void CSVCore::ExecuteSignal()
 {
-   if(signalType == 0 || m_tradeManager == NULL)
-      return false;
-      
-   // Calculate position size based on risk
-   double lotSize = CalculatePositionSize(stopLoss);
-   
-   if(lotSize <= 0.0)
+   // Execute trading signals
+   // Logic will be implemented in TradeManager class
+}
+
+//+------------------------------------------------------------------+
+//| Process timer event                                              |
+//+------------------------------------------------------------------+
+bool CSVCore::ProcessTimer()
+{
+   if(!m_isInitialized)
    {
-      Print("Invalid lot size calculated: ", lotSize);
+      SetLastError(ERR_NOT_INITIALIZED, "EA is not initialized");
       return false;
    }
    
-   bool result = false;
+   // Additional timer-based logic
    
-   // Execute the trade
-   if(signalType > 0)
-   {
-      // Buy trade
-      result = m_tradeManager.OpenBuyOrder(m_symbol, lotSize, stopLoss, takeProfit);
-      
-      if(result)
-      {
-         Print("Buy order executed. Lots: ", lotSize, ", Entry: ", entryPrice, ", SL: ", stopLoss, ", TP: ", takeProfit);
-         m_validSignalsCount++;
-      }
-   }
-   else if(signalType < 0)
-   {
-      // Sell trade
-      result = m_tradeManager.OpenSellOrder(m_symbol, lotSize, stopLoss, takeProfit);
-      
-      if(result)
-      {
-         Print("Sell order executed. Lots: ", lotSize, ", Entry: ", entryPrice, ", SL: ", stopLoss, ", TP: ", takeProfit);
-         m_validSignalsCount++;
-      }
-   }
-   
-   return result;
+   return true;
 }
 
 //+------------------------------------------------------------------+
-//| Calculate position size based on risk and stop loss              |
+//| Set last error                                                   |
 //+------------------------------------------------------------------+
-double CSVCore::CalculatePositionSize(double stopLossPrice)
+void CSVCore::SetLastError(int errorCode, string description)
 {
-   if(m_portfolio == NULL || stopLossPrice == 0.0)
-      return 0.0;
-      
-   double entryPrice = (stopLossPrice > MarketInfo(m_symbol, MODE_ASK)) ? 
-                        MarketInfo(m_symbol, MODE_BID) : // Sell order
-                        MarketInfo(m_symbol, MODE_ASK);  // Buy order
+   m_lastError = errorCode;
+   m_lastErrorDesc = description;
    
-   double stopLossPoints = MathAbs(entryPrice - stopLossPrice) / MarketInfo(m_symbol, MODE_POINT);
-   
-   // Calculate lot size based on risk percentage and stop loss points
-   return m_portfolio.CalculateLotSizeFromRisk(m_symbol, m_defaultRiskPerTrade, stopLossPoints);
+   if(m_isDebugMode)
+      Print("ERROR ", errorCode, ": ", description);
 }
 
 //+------------------------------------------------------------------+
-//| Get signal quality metric                                        |
+//| Get error description                                            |
 //+------------------------------------------------------------------+
-double CSVCore::GetSignalQuality() const
+string CSVCore::GetErrorDescription(int errorCode)
 {
-   if(m_totalSignalsGenerated == 0)
-      return 0.0;
-      
-   // Signal quality = valid signals / total signals
-   return (double)m_validSignalsCount / m_totalSignalsGenerated * 100.0;
+   return "Error " + IntegerToString(errorCode) + ": " + ErrorDescription(errorCode);
 }
 
 //+------------------------------------------------------------------+
-//| Get system performance metric                                    |
+//| Format double value                                              |
 //+------------------------------------------------------------------+
-double CSVCore::GetSystemPerformance() const
+string CSVCore::FormatDouble(double value, int digits)
 {
-   if(m_validSignalsCount == 0)
-      return 0.0;
-      
-   // Performance = profitable signals / valid signals
-   return (double)m_profitableSignalsCount / m_validSignalsCount * 100.0;
+   return DoubleToString(value, digits);
+}
+
+//+------------------------------------------------------------------+
+//| Format time value                                                |
+//+------------------------------------------------------------------+
+string CSVCore::FormatTime(datetime time)
+{
+   return TimeToString(time, TIME_DATE | TIME_MINUTES | TIME_SECONDS);
 }
