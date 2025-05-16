@@ -1,389 +1,718 @@
 //+------------------------------------------------------------------+
-//|                                                     SVUtils.mqh   |
+//|                                                   SVUtils.mqh |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "ScalpingVortex"
+#property copyright "Copyright 2025, Scalping Vortex"
 #property link      "https://github.com/H3NST7/ScalpingVortex"
 #property version   "1.00"
-#property strict
 
 //+------------------------------------------------------------------+
-//| Date and time utility functions                                  |
+//| Enumerations                                                     |
 //+------------------------------------------------------------------+
 
-//+------------------------------------------------------------------+
-//| Format date/time as a string                                     |
-//+------------------------------------------------------------------+
-string FormatDateTime(datetime time)
+// Log levels
+enum ENUM_SV_LOG_LEVEL
 {
-   string result;
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
+   LOG_LEVEL_NONE    = 0,  // No logging
+   LOG_LEVEL_ERROR   = 1,  // Errors only
+   LOG_LEVEL_WARNING = 2,  // Errors and warnings
+   LOG_LEVEL_INFO    = 3,  // Errors, warnings, and info
+   LOG_LEVEL_DEBUG   = 4   // All messages (including debug)
+};
+
+// Trade types
+enum ENUM_SV_TRADE_TYPE
+{
+   TRADE_TYPE_NONE   = 0,  // No trade
+   TRADE_TYPE_BUY    = 1,  // Buy trade
+   TRADE_TYPE_SELL   = 2   // Sell trade
+};
+
+// Signal strength
+enum ENUM_SV_SIGNAL_STRENGTH
+{
+   SIGNAL_STRENGTH_NONE   = 0,  // No signal
+   SIGNAL_STRENGTH_WEAK   = 1,  // Weak signal
+   SIGNAL_STRENGTH_MEDIUM = 2,  // Medium signal
+   SIGNAL_STRENGTH_STRONG = 3   // Strong signal
+};
+
+//+------------------------------------------------------------------+
+//| CSVUtils - Utility functions for the EA                          |
+//+------------------------------------------------------------------+
+class CSVUtils
+{
+private:
+   // File handling
+   static string     m_logFileName;      // Log file name
+   static int        m_logFileHandle;    // Log file handle
+   static ENUM_SV_LOG_LEVEL m_logLevel;  // Current log level
    
-   result = StringFormat("%04d-%02d-%02d %02d:%02d:%02d",
-                     dt.year,
-                     dt.mon,
-                     dt.day,
-                     dt.hour,
-                     dt.min,
-                     dt.sec);
+   // Constants
+   static const int  MAX_LOG_FILES = 10; // Maximum number of log files to keep
    
-   return result;
+public:
+   // Constructor/Destructor
+   static void       Initialize(string baseName = "ScalpingVortex");
+   static void       Deinitialize();
+   
+   // Logging methods
+   static void       Log(ENUM_SV_LOG_LEVEL level, string message);
+   static void       SetLogLevel(ENUM_SV_LOG_LEVEL level) { m_logLevel = level; }
+   static void       CleanupLogFiles();
+   
+   // String formatting
+   static string     FormatDouble(double value, int digits = 5);
+   static string     FormatTime(datetime time);
+   static string     FormatTimeSpan(datetime startTime, datetime endTime);
+   
+   // Price conversion
+   static double     NormalizePrice(string symbol, double price);
+   static double     PriceToPips(string symbol, double price1, double price2);
+   static double     PipsToPrice(string symbol, double pips);
+   
+   // Trade utilities
+   static double     NormalizeLotSize(string symbol, double lotSize);
+   static string     OrderTypeToString(int orderType);
+   static int        StringToOrderType(string orderTypeStr);
+   
+   // Date and time utilities
+   static bool       IsNewDay(datetime time1, datetime time2);
+   static bool       IsNewHour(datetime time1, datetime time2);
+   static bool       IsWeekend(datetime time);
+   static bool       IsTradingSession(datetime time, int sessionStart, int sessionEnd);
+   static int        GetServerTimeHour();
+   static int        GetServerUTCOffset();
+   static int        GetDayOfWeek();
+   
+   // Error handling
+   static string     GetErrorDescription(int errorCode);
+   static void       HandleTradingError(int errorCode);
+   
+   // Math utilities
+   static double     Round(double value, double ticks = 0.00001);
+   static double     GetMax(double value1, double value2);
+   static double     GetMin(double value1, double value2);
+   static double     GetMedian(double &array[]);
+   static double     GetStandardDeviation(double &array[]);
+   
+   // Array utilities
+   static void       SortArray(double &array[]);
+   static void       ArrayReverse(double &array[]);
+   static double     ArraySum(double &array[]);
+   static double     ArrayAverage(double &array[]);
+   static double     ArrayMaximum(double &array[]);
+   static double     ArrayMinimum(double &array[]);
+};
+
+// Initialize static variables
+string CSVUtils::m_logFileName = "ScalpingVortex.log";
+int CSVUtils::m_logFileHandle = INVALID_HANDLE;
+ENUM_SV_LOG_LEVEL CSVUtils::m_logLevel = LOG_LEVEL_INFO;
+
+//+------------------------------------------------------------------+
+//| Initialize the utility class                                     |
+//+------------------------------------------------------------------+
+void CSVUtils::Initialize(string baseName = "ScalpingVortex")
+{
+   // Create log file name
+   m_logFileName = baseName + "_" + TimeToString(TimeCurrent(), TIME_DATE) + ".log";
+   
+   // Open log file
+   m_logFileHandle = FileOpen(m_logFileName, FILE_WRITE | FILE_TXT | FILE_ANSI);
+   
+   // Check if file was opened
+   if(m_logFileHandle == INVALID_HANDLE)
+   {
+      Print("Failed to open log file: ", m_logFileName, ". Error code: ", GetLastError());
+   }
+   else
+   {
+      // Write header
+      FileWrite(m_logFileHandle, "=== ScalpingVortex EA Log ===");
+      FileWrite(m_logFileHandle, "Started at: ", TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS));
+      FileWrite(m_logFileHandle, "==========================");
+      FileFlush(m_logFileHandle);
+   }
+   
+   // Clean up old log files
+   CleanupLogFiles();
 }
 
 //+------------------------------------------------------------------+
-//| Format date as a string                                          |
+//| Deinitialize the utility class                                   |
 //+------------------------------------------------------------------+
-string FormatDate(datetime time)
+void CSVUtils::Deinitialize()
 {
-   string result;
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   
-   result = StringFormat("%04d-%02d-%02d",
-                     dt.year,
-                     dt.mon,
-                     dt.day);
-   
-   return result;
-}
-
-//+------------------------------------------------------------------+
-//| Format time as a string                                          |
-//+------------------------------------------------------------------+
-string FormatTime(datetime time)
-{
-   string result;
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   
-   result = StringFormat("%02d:%02d:%02d",
-                     dt.hour,
-                     dt.min,
-                     dt.sec);
-   
-   return result;
-}
-
-//+------------------------------------------------------------------+
-//| Check if the current hour is within trading hours                |
-//+------------------------------------------------------------------+
-bool IsTradingHour()
-{
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   int hour = dt.hour;
-   
-   // Define trading hours (adjust as needed)
-   return (hour >= 8 && hour < 20);
-}
-
-//+------------------------------------------------------------------+
-//| Calculate minutes since the start of the day                     |
-//+------------------------------------------------------------------+
-int MinutesSinceDayStart(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.hour * 60 + dt.min;
-}
-
-//+------------------------------------------------------------------+
-//| Check if today is a weekend                                      |
-//+------------------------------------------------------------------+
-bool IsWeekend()
-{
-   MqlDateTime dt;
-   TimeToStruct(TimeCurrent(), dt);
-   int day = dt.day_of_week;
-   return (day == 0 || day == 6); // 0 = Sunday, 6 = Saturday
-}
-
-//+------------------------------------------------------------------+
-//| Check if the market is open                                      |
-//+------------------------------------------------------------------+
-bool IsMarketOpen(string symbol = NULL)
-{
-   if(symbol == NULL)
-      symbol = Symbol();
+   // Close log file
+   if(m_logFileHandle != INVALID_HANDLE)
+   {
+      // Write footer
+      FileWrite(m_logFileHandle, "==========================");
+      FileWrite(m_logFileHandle, "Stopped at: ", TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS));
+      FileWrite(m_logFileHandle, "=== Log End ===");
       
-   return !IsTradeSessionClosed(); // MT4 built-in function
-}
-
-//+------------------------------------------------------------------+
-//| Error handling utility functions                                 |
-//+------------------------------------------------------------------+
-
-//+------------------------------------------------------------------+
-//| Get the error description based on error code                    |
-//+------------------------------------------------------------------+
-string GetErrorDescription(int errorCode)
-{
-   string errorDescription = "Unknown error";
-   
-   switch(errorCode)
-   {
-      case 0:   errorDescription = "No error"; break;
-      case 1:   errorDescription = "No error, but the result is unknown"; break;
-      case 2:   errorDescription = "Common error"; break;
-      case 3:   errorDescription = "Invalid trade parameters"; break;
-      case 4:   errorDescription = "Trade server is busy"; break;
-      case 5:   errorDescription = "Old version of the client terminal"; break;
-      case 6:   errorDescription = "No connection with trade server"; break;
-      case 7:   errorDescription = "Not enough rights"; break;
-      case 8:   errorDescription = "Too frequent requests"; break;
-      case 9:   errorDescription = "Malfunctional trade operation"; break;
-      case 64:  errorDescription = "Account disabled"; break;
-      case 65:  errorDescription = "Invalid account"; break;
-      case 128: errorDescription = "Trade timeout"; break;
-      case 129: errorDescription = "Invalid price"; break;
-      case 130: errorDescription = "Invalid stops"; break;
-      case 131: errorDescription = "Invalid trade volume"; break;
-      case 132: errorDescription = "Market is closed"; break;
-      case 133: errorDescription = "Trade is disabled"; break;
-      case 134: errorDescription = "Not enough money"; break;
-      case 135: errorDescription = "Price changed"; break;
-      case 136: errorDescription = "Off quotes"; break;
-      case 137: errorDescription = "Broker is busy"; break;
-      case 138: errorDescription = "Requote"; break;
-      case 139: errorDescription = "Order is locked"; break;
-      case 140: errorDescription = "Long positions only allowed"; break;
-      case 141: errorDescription = "Too many requests"; break;
-      case 145: errorDescription = "Modification denied because order too close to market"; break;
-      case 146: errorDescription = "Trade context is busy"; break;
-      case 147: errorDescription = "Expirations are denied by broker"; break;
-      case 148: errorDescription = "Amount of open and pending orders has reached the limit"; break;
-      case 149: errorDescription = "An attempt to open an order countervailing to existing one"; break;
-      case 150: errorDescription = "Hedge is prohibited"; break;
-      case 4000: errorDescription = "No error"; break;
-      case 4001: errorDescription = "Wrong function pointer"; break;
-      case 4002: errorDescription = "Array index is out of range"; break;
-      case 4003: errorDescription = "No memory for function call stack"; break;
-      case 4004: errorDescription = "Recursive stack overflow"; break;
-      case 4005: errorDescription = "Not enough stack for parameter"; break;
-      case 4006: errorDescription = "No memory for parameter string"; break;
-      case 4007: errorDescription = "No memory for temp string"; break;
-      case 4008: errorDescription = "Not initialized string"; break;
-      case 4009: errorDescription = "Not initialized string in array"; break;
-      case 4010: errorDescription = "No memory for array string"; break;
-      case 4011: errorDescription = "Too long string"; break;
-      case 4012: errorDescription = "Remainder from zero divide"; break;
-      case 4013: errorDescription = "Zero divide"; break;
-      case 4014: errorDescription = "Unknown command"; break;
-      case 4015: errorDescription = "Wrong jump"; break;
-      case 4016: errorDescription = "Not initialized array"; break;
-      case 4017: errorDescription = "DLL calls are not allowed"; break;
-      case 4018: errorDescription = "Cannot load library"; break;
-      case 4019: errorDescription = "Cannot call function"; break;
-      case 4020: errorDescription = "Expert function calls are not allowed"; break;
-      case 4021: errorDescription = "Not enough memory for string returned from function"; break;
-      case 4022: errorDescription = "System is busy"; break;
-      case 4050: errorDescription = "Invalid function parameters count"; break;
-      case 4051: errorDescription = "Invalid function parameter value"; break;
-      case 4052: errorDescription = "String function internal error"; break;
-      case 4053: errorDescription = "Some array error"; break;
-      case 4054: errorDescription = "Incorrect series array using"; break;
-      case 4055: errorDescription = "Custom indicator error"; break;
-      case 4056: errorDescription = "Arrays are incompatible"; break;
-      case 4057: errorDescription = "Global variables processing error"; break;
-      case 4058: errorDescription = "Global variable not found"; break;
-      case 4059: errorDescription = "Function is not allowed in testing mode"; break;
-      case 4060: errorDescription = "Function is not confirmed"; break;
-      case 4061: errorDescription = "Send mail error"; break;
-      case 4062: errorDescription = "String parameter expected"; break;
-      case 4063: errorDescription = "Integer parameter expected"; break;
-      case 4064: errorDescription = "Double parameter expected"; break;
-      case 4065: errorDescription = "Array as parameter expected"; break;
-      case 4066: errorDescription = "Requested history data in update state"; break;
-      case 4067: errorDescription = "Some error in trading function"; break;
-      case 4099: errorDescription = "End of file"; break;
-      case 4100: errorDescription = "Some file error"; break;
-      case 4101: errorDescription = "Wrong file name"; break;
-      case 4102: errorDescription = "Too many opened files"; break;
-      case 4103: errorDescription = "Cannot open file"; break;
-      case 4104: errorDescription = "Incompatible access to a file"; break;
-      case 4105: errorDescription = "No order selected"; break;
-      case 4106: errorDescription = "Unknown symbol"; break;
-      case 4107: errorDescription = "Invalid price parameter for trade function"; break;
-      case 4108: errorDescription = "Invalid ticket"; break;
-      case 4109: errorDescription = "Trade is not allowed in the expert properties"; break;
-      case 4110: errorDescription = "Longs are not allowed in the expert properties"; break;
-      case 4111: errorDescription = "Shorts are not allowed in the expert properties"; break;
-      case 4200: errorDescription = "Object already exists"; break;
-      case 4201: errorDescription = "Unknown object property"; break;
-      case 4202: errorDescription = "Object does not exist"; break;
-      case 4203: errorDescription = "Unknown object type"; break;
-      case 4204: errorDescription = "No object name"; break;
-      case 4205: errorDescription = "Object coordinates error"; break;
-      case 4206: errorDescription = "No specified subwindow"; break;
-      case 4207: errorDescription = "Some error in object function"; break;
-      default:  errorDescription = "Error " + IntegerToString(errorCode); break;
+      // Close file
+      FileClose(m_logFileHandle);
+      m_logFileHandle = INVALID_HANDLE;
    }
-   
-   return errorDescription;
 }
 
 //+------------------------------------------------------------------+
-//| Print an error message with details                              |
+//| Log a message                                                    |
 //+------------------------------------------------------------------+
-void PrintError(string message, int errorCode)
+void CSVUtils::Log(ENUM_SV_LOG_LEVEL level, string message)
 {
-   string errorDescription = GetErrorDescription(errorCode);
-   Print(message, " Error: ", errorCode, " (", errorDescription, ")");
-}
-
-//+------------------------------------------------------------------+
-//| Fixed time function implementations to replace deprecated ones    |
-//+------------------------------------------------------------------+
-
-// Modern MT4/MT5 compatible time functions
-int TimeYear(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.year;
-}
-
-int TimeMonth(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.mon;
-}
-
-int TimeDay(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.day;
-}
-
-int TimeHour(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.hour;
-}
-
-int TimeMinute(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.min;
-}
-
-int TimeSeconds(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.sec;
-}
-
-int TimeDayOfWeek(datetime time)
-{
-   MqlDateTime dt;
-   TimeToStruct(time, dt);
-   return dt.day_of_week;
-}
-
-//+------------------------------------------------------------------+
-//| String utilities                                                 |
-//+------------------------------------------------------------------+
-
-//+------------------------------------------------------------------+
-//| Join array elements into a string with separator                 |
-//+------------------------------------------------------------------+
-string JoinStrings(string &array[], string separator)
-{
-   string result = "";
-   int size = ArraySize(array);
-   
-   for(int i = 0; i < size; i++)
-   {
-      if(i > 0)
-         result += separator;
+   // Check if logging level is enabled
+   if(level > m_logLevel)
+      return;
       
-      result += array[i];
-   }
-   
-   return result;
-}
-
-//+------------------------------------------------------------------+
-//| Split a string into an array using a separator                   |
-//+------------------------------------------------------------------+
-int SplitString(string str, string separator, string &array[])
-{
-   int count = 0;
-   int pos = 0;
-   int sepLen = StringLen(separator);
-   int len = StringLen(str);
-   
-   // Count the number of separators
-   while((pos = StringFind(str, separator, pos)) != -1)
+   // Create log entry
+   string levelText = "";
+   switch(level)
    {
-      count++;
-      pos += sepLen;
+      case LOG_LEVEL_ERROR:
+         levelText = "ERROR";
+         break;
+      case LOG_LEVEL_WARNING:
+         levelText = "WARNING";
+         break;
+      case LOG_LEVEL_INFO:
+         levelText = "INFO";
+         break;
+      case LOG_LEVEL_DEBUG:
+         levelText = "DEBUG";
+         break;
+      default:
+         levelText = "UNKNOWN";
+         break;
    }
    
-   // Resize the array to accommodate the parts
-   ArrayResize(array, count + 1);
+   // Format log entry
+   string logEntry = TimeToString(TimeCurrent(), TIME_DATE | TIME_MINUTES | TIME_SECONDS) + 
+                    " [" + levelText + "] " + message;
    
-   // Split the string
-   pos = 0;
-   int prevPos = 0;
-   int idx = 0;
+   // Print to terminal
+   Print(logEntry);
    
-   while((pos = StringFind(str, separator, prevPos)) != -1)
+   // Write to log file
+   if(m_logFileHandle != INVALID_HANDLE)
    {
-      array[idx++] = StringSubstr(str, prevPos, pos - prevPos);
-      prevPos = pos + sepLen;
+      FileWrite(m_logFileHandle, logEntry);
+      FileFlush(m_logFileHandle);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Clean up old log files                                           |
+//+------------------------------------------------------------------+
+void CSVUtils::CleanupLogFiles()
+{
+   string filePath = TerminalInfoString(TERMINAL_DATA_PATH) + "\\MQL5\\Logs\\";
+   string fileName = "";
+   int fileHandle;
+   datetime fileTime;
+   datetime oldestTime = TimeCurrent();
+   string oldestFile = "";
+   int fileCount = 0;
+   
+   // Count log files and find the oldest one
+   long searchHandle = FileFindFirst(filePath + "ScalpingVortex_*.log", fileName);
+   
+   if(searchHandle != INVALID_HANDLE)
+   {
+      do
+      {
+         fileCount++;
+         
+         // Get file time
+         fileHandle = FileOpen(filePath + fileName, FILE_READ | FILE_SHARE_READ);
+         if(fileHandle != INVALID_HANDLE)
+         {
+            fileTime = (datetime)FileGetInteger(fileHandle, FILE_CREATE_DATE);
+            FileClose(fileHandle);
+            
+            // Check if older than current oldest
+            if(fileTime < oldestTime)
+            {
+               oldestTime = fileTime;
+               oldestFile = fileName;
+            }
+         }
+         
+      } while(FileFindNext(searchHandle, fileName));
+      
+      FileFindClose(searchHandle);
    }
    
-   // Add the last part
-   array[idx] = StringSubstr(str, prevPos, len - prevPos);
+   // If too many log files, delete the oldest one
+   if(fileCount > MAX_LOG_FILES && oldestFile != "")
+   {
+      FileDelete(filePath + oldestFile);
+      Log(LOG_LEVEL_INFO, "Deleted old log file: " + oldestFile);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Format a double value                                            |
+//+------------------------------------------------------------------+
+string CSVUtils::FormatDouble(double value, int digits = 5)
+{
+   return DoubleToString(value, digits);
+}
+
+//+------------------------------------------------------------------+
+//| Format a time value                                              |
+//+------------------------------------------------------------------+
+string CSVUtils::FormatTime(datetime time)
+{
+   return TimeToString(time, TIME_DATE | TIME_MINUTES | TIME_SECONDS);
+}
+
+//+------------------------------------------------------------------+
+//| Format a time span                                               |
+//+------------------------------------------------------------------+
+string CSVUtils::FormatTimeSpan(datetime startTime, datetime endTime)
+{
+   int totalSeconds = (int)(endTime - startTime);
+   int hours = totalSeconds / 3600;
+   int minutes = (totalSeconds % 3600) / 60;
+   int seconds = totalSeconds % 60;
    
-   return count + 1;
+   return StringFormat("%02d:%02d:%02d", hours, minutes, seconds);
 }
 
 //+------------------------------------------------------------------+
-//| Mathematical utilities                                           |
+//| Normalize price according to symbol settings                     |
 //+------------------------------------------------------------------+
-
-//+------------------------------------------------------------------+
-//| Round to the nearest specified precision                         |
-//+------------------------------------------------------------------+
-double RoundToDigits(double value, int digits)
+double CSVUtils::NormalizePrice(string symbol, double price)
 {
-   double factor = MathPow(10.0, digits);
-   return MathRound(value * factor) / factor;
-}
-
-//+------------------------------------------------------------------+
-//| Normalize price value based on symbol digits                     |
-//+------------------------------------------------------------------+
-double NormalizePrice(string symbol, double price)
-{
-   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
    return NormalizeDouble(price, digits);
 }
 
 //+------------------------------------------------------------------+
-//| Convert lot size to contract size                                |
+//| Convert price difference to pips                                 |
 //+------------------------------------------------------------------+
-double LotsToContractSize(string symbol, double lots)
+double CSVUtils::PriceToPips(string symbol, double price1, double price2)
 {
-   double contractSize = MarketInfo(symbol, MODE_LOTSIZE);
-   return lots * contractSize;
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double multiplier = (digits == 3 || digits == 5) ? 10.0 : 1.0;
+   
+   return MathAbs(price1 - price2) / point / multiplier;
 }
 
 //+------------------------------------------------------------------+
-//| Calculate position value                                         |
+//| Convert pips to price difference                                 |
 //+------------------------------------------------------------------+
-double CalculatePositionValue(string symbol, double lots, double price)
+double CSVUtils::PipsToPrice(string symbol, double pips)
 {
-   double contractSize = MarketInfo(symbol, MODE_LOTSIZE);
-   double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
-   double tickSize = MarketInfo(symbol, MODE_TICKSIZE);
+   int digits = (int)SymbolInfoInteger(symbol, SYMBOL_DIGITS);
+   double point = SymbolInfoDouble(symbol, SYMBOL_POINT);
+   double multiplier = (digits == 3 || digits == 5) ? 10.0 : 1.0;
    
-   return lots * contractSize * price * (tickValue / tickSize);
+   return pips * point * multiplier;
+}
+
+//+------------------------------------------------------------------+
+//| Normalize lot size according to symbol settings                  |
+//+------------------------------------------------------------------+
+double CSVUtils::NormalizeLotSize(string symbol, double lotSize)
+{
+   double minVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double stepVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   
+   lotSize = MathMax(minVolume, lotSize);
+   lotSize = MathMin(maxVolume, lotSize);
+   lotSize = MathRound(lotSize / stepVolume) * stepVolume;
+   
+   return NormalizeDouble(lotSize, 2);
+}
+
+//+------------------------------------------------------------------+
+//| Convert order type to string                                     |
+//+------------------------------------------------------------------+
+string CSVUtils::OrderTypeToString(int orderType)
+{
+   switch(orderType)
+   {
+      case ORDER_TYPE_BUY:
+         return "Buy";
+      case ORDER_TYPE_SELL:
+         return "Sell";
+      case ORDER_TYPE_BUY_LIMIT:
+         return "Buy Limit";
+      case ORDER_TYPE_SELL_LIMIT:
+         return "Sell Limit";
+      case ORDER_TYPE_BUY_STOP:
+         return "Buy Stop";
+      case ORDER_TYPE_SELL_STOP:
+         return "Sell Stop";
+      case ORDER_TYPE_BUY_STOP_LIMIT:
+         return "Buy Stop Limit";
+      case ORDER_TYPE_SELL_STOP_LIMIT:
+         return "Sell Stop Limit";
+      default:
+         return "Unknown";
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Convert string to order type                                     |
+//+------------------------------------------------------------------+
+int CSVUtils::StringToOrderType(string orderTypeStr)
+{
+   if(orderTypeStr == "Buy")
+      return ORDER_TYPE_BUY;
+   else if(orderTypeStr == "Sell")
+      return ORDER_TYPE_SELL;
+   else if(orderTypeStr == "Buy Limit")
+      return ORDER_TYPE_BUY_LIMIT;
+   else if(orderTypeStr == "Sell Limit")
+      return ORDER_TYPE_SELL_LIMIT;
+   else if(orderTypeStr == "Buy Stop")
+      return ORDER_TYPE_BUY_STOP;
+   else if(orderTypeStr == "Sell Stop")
+      return ORDER_TYPE_SELL_STOP;
+   else if(orderTypeStr == "Buy Stop Limit")
+      return ORDER_TYPE_BUY_STOP_LIMIT;
+   else if(orderTypeStr == "Sell Stop Limit")
+      return ORDER_TYPE_SELL_STOP_LIMIT;
+   else
+      return -1;
+}
+
+//+------------------------------------------------------------------+
+//| Check if it's a new day                                          |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsNewDay(datetime time1, datetime time2)
+{
+   MqlDateTime dt1, dt2;
+   TimeToStruct(time1, dt1);
+   TimeToStruct(time2, dt2);
+   
+   return (dt1.day != dt2.day || dt1.mon != dt2.mon || dt1.year != dt2.year);
+}
+
+//+------------------------------------------------------------------+
+//| Check if it's a new hour                                         |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsNewHour(datetime time1, datetime time2)
+{
+   MqlDateTime dt1, dt2;
+   TimeToStruct(time1, dt1);
+   TimeToStruct(time2, dt2);
+   
+   return (dt1.hour != dt2.hour || IsNewDay(time1, time2));
+}
+
+//+------------------------------------------------------------------+
+//| Check if it's a weekend                                          |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsWeekend(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   
+   // Saturday is 6, Sunday is 0
+   return (dt.day_of_week == 0 || dt.day_of_week == 6);
+}
+
+//+------------------------------------------------------------------+
+//| Check if current time is within trading session                  |
+//+------------------------------------------------------------------+
+bool CSVUtils::IsTradingSession(datetime time, int sessionStart, int sessionEnd)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   
+   int hour = dt.hour;
+   
+   // If session crosses midnight
+   if(sessionEnd < sessionStart)
+   {
+      return (hour >= sessionStart || hour < sessionEnd);
+   }
+   else
+   {
+      return (hour >= sessionStart && hour < sessionEnd);
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Get server time hour                                             |
+//+------------------------------------------------------------------+
+int CSVUtils::GetServerTimeHour()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   
+   return dt.hour;
+}
+
+//+------------------------------------------------------------------+
+//| Get server UTC offset                                            |
+//+------------------------------------------------------------------+
+int CSVUtils::GetServerUTCOffset()
+{
+   // Calculate UTC offset
+   datetime serverTime = TimeCurrent();
+   datetime gmtTime = TimeGMT();
+   
+   return (int)(serverTime - gmtTime) / 3600;
+}
+
+//+------------------------------------------------------------------+
+//| Get day of week (1-7: Monday-Sunday)                             |
+//+------------------------------------------------------------------+
+int CSVUtils::GetDayOfWeek()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   
+   // Convert to 1-7 (Monday-Sunday)
+   return dt.day_of_week == 0 ? 7 : dt.day_of_week;
+}
+
+//+------------------------------------------------------------------+
+//| Get error description                                            |
+//+------------------------------------------------------------------+
+string CSVUtils::GetErrorDescription(int errorCode)
+{
+   return "Error " + IntegerToString(errorCode) + ": " + ErrorDescription(errorCode);
+}
+
+//+------------------------------------------------------------------+
+//| Handle trading error                                             |
+//+------------------------------------------------------------------+
+void CSVUtils::HandleTradingError(int errorCode)
+{
+   switch(errorCode)
+   {
+      case ERR_NO_ERROR:
+         // No error
+         break;
+         
+      case ERR_NO_RESULT:
+         Log(LOG_LEVEL_WARNING, "No error returned but operation failed");
+         break;
+         
+      case ERR_INVALID_TRADE_PARAMETERS:
+      case ERR_INVALID_TRADE_VOLUME:
+      case ERR_INVALID_STOPS:
+         Log(LOG_LEVEL_ERROR, "Invalid trade parameters: " + GetErrorDescription(errorCode));
+         break;
+         
+      case ERR_INVALID_PRICE:
+      case ERR_PRICE_CHANGED:
+      case ERR_REQUOTE:
+      case ERR_OFF_QUOTES:
+         Log(LOG_LEVEL_WARNING, "Price issue: " + GetErrorDescription(errorCode));
+         break;
+         
+      case ERR_SERVER_BUSY:
+      case ERR_NO_CONNECTION:
+      case ERR_TRADE_TIMEOUT:
+      case ERR_BROKER_BUSY:
+         Log(LOG_LEVEL_WARNING, "Connection issue: " + GetErrorDescription(errorCode));
+         break;
+         
+      case ERR_TRADE_DISABLED:
+         Log(LOG_LEVEL_ERROR, "Trading is disabled");
+         break;
+         
+      case ERR_NOT_ENOUGH_MONEY:
+         Log(LOG_LEVEL_ERROR, "Not enough money to execute trade");
+         break;
+         
+      default:
+         Log(LOG_LEVEL_ERROR, "Trading error: " + GetErrorDescription(errorCode));
+         break;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Round a value to the specified tick size                         |
+//+------------------------------------------------------------------+
+double CSVUtils::Round(double value, double ticks = 0.00001)
+{
+   return NormalizeDouble(MathRound(value / ticks) * ticks, 10);
+}
+
+//+------------------------------------------------------------------+
+//| Get the maximum of two values                                    |
+//+------------------------------------------------------------------+
+double CSVUtils::GetMax(double value1, double value2)
+{
+   return MathMax(value1, value2);
+}
+
+//+------------------------------------------------------------------+
+//| Get the minimum of two values                                    |
+//+------------------------------------------------------------------+
+double CSVUtils::GetMin(double value1, double value2)
+{
+   return MathMin(value1, value2);
+}
+
+//+------------------------------------------------------------------+
+//| Get the median of an array                                       |
+//+------------------------------------------------------------------+
+double CSVUtils::GetMedian(double &array[])
+{
+   int size = ArraySize(array);
+   
+   if(size == 0)
+      return 0.0;
+      
+   if(size == 1)
+      return array[0];
+      
+   // Make a copy of the array
+   double sortedArray[];
+   ArrayCopy(sortedArray, array);
+   
+   // Sort the array
+   ArraySort(sortedArray);
+   
+   // Get median
+   if(size % 2 == 0)
+   {
+      // Even number of elements
+      return (sortedArray[size / 2 - 1] + sortedArray[size / 2]) / 2.0;
+   }
+   else
+   {
+      // Odd number of elements
+      return sortedArray[size / 2];
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Get the standard deviation of an array                           |
+//+------------------------------------------------------------------+
+double CSVUtils::GetStandardDeviation(double &array[])
+{
+   int size = ArraySize(array);
+   
+   if(size <= 1)
+      return 0.0;
+      
+   // Calculate mean
+   double sum = 0.0;
+   for(int i = 0; i < size; i++)
+   {
+      sum += array[i];
+   }
+   double mean = sum / size;
+   
+   // Calculate variance
+   double variance = 0.0;
+   for(int i = 0; i < size; i++)
+   {
+      variance += MathPow(array[i] - mean, 2);
+   }
+   variance /= (size - 1);
+   
+   // Return standard deviation
+   return MathSqrt(variance);
+}
+
+//+------------------------------------------------------------------+
+//| Sort an array                                                    |
+//+------------------------------------------------------------------+
+void CSVUtils::SortArray(double &array[])
+{
+   ArraySort(array);
+}
+
+//+------------------------------------------------------------------+
+//| Reverse an array                                                 |
+//+------------------------------------------------------------------+
+void CSVUtils::ArrayReverse(double &array[])
+{
+   int size = ArraySize(array);
+   
+   if(size <= 1)
+      return;
+      
+   for(int i = 0; i < size / 2; i++)
+   {
+      double temp = array[i];
+      array[i] = array[size - 1 - i];
+      array[size - 1 - i] = temp;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Calculate sum of array elements                                  |
+//+------------------------------------------------------------------+
+double CSVUtils::ArraySum(double &array[])
+{
+   double sum = 0.0;
+   int size = ArraySize(array);
+   
+   for(int i = 0; i < size; i++)
+   {
+      sum += array[i];
+   }
+   
+   return sum;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate average of array elements                              |
+//+------------------------------------------------------------------+
+double CSVUtils::ArrayAverage(double &array[])
+{
+   int size = ArraySize(array);
+   
+   if(size == 0)
+      return 0.0;
+      
+   return ArraySum(array) / size;
+}
+
+//+------------------------------------------------------------------+
+//| Find maximum value in array                                      |
+//+------------------------------------------------------------------+
+double CSVUtils::ArrayMaximum(double &array[])
+{
+   int size = ArraySize(array);
+   
+   if(size == 0)
+      return 0.0;
+      
+   double max = array[0];
+   
+   for(int i = 1; i < size; i++)
+   {
+      if(array[i] > max)
+         max = array[i];
+   }
+   
+   return max;
+}
+
+//+------------------------------------------------------------------+
+//| Find minimum value in array                                      |
+//+------------------------------------------------------------------+
+double CSVUtils::ArrayMinimum(double &array[])
+{
+   int size = ArraySize(array);
+   
+   if(size == 0)
+      return 0.0;
+      
+   double min = array[0];
+   
+   for(int i = 1; i < size; i++)
+   {
+      if(array[i] < min)
+         min = array[i];
+   }
+   
+   return min;
 }
