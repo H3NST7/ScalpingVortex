@@ -1,0 +1,491 @@
+//+------------------------------------------------------------------+
+//|                                                    SVCore.mqh |
+//|                                           Copyright 2025, H3nst7 |
+//|                                           https://www.h3nst7.com |
+//+------------------------------------------------------------------+
+#property copyright "Copyright 2025, H3nst7"
+#property link      "https://www.h3nst7.com"
+#property strict
+
+// Include necessary components
+#include "SVUtils.mqh"
+#include "SVMarketAnalyzer.mqh"
+#include "SVRiskEngine.mqh"
+#include "SVStrategies.mqh"
+#include "SVTradeManager.mqh"
+#include "SVOptimizer.mqh"
+#include "SVPortfolio.mqh"
+
+// Core orchestrator class
+class CSVCore
+{
+private:
+   // Component instances
+   CSVMarketAnalyzer *m_marketAnalyzer;
+   CSVRiskEngine     *m_riskEngine;
+   CSVTradeManager   *m_tradeManager;
+   CSVOptimizer      *m_optimizer;
+   CSVPortfolio      *m_portfolio;
+   
+   // Strategy instances
+   CSVStrategyBase   *m_strategies[];
+   int                m_strategyCount;
+   
+   // EA State
+   enum ENUM_EA_STATE {
+      EA_STATE_INITIALIZING,
+      EA_STATE_ACTIVE,
+      EA_STATE_PAUSED_NEWS,
+      EA_STATE_PAUSED_RISK_LIMIT,
+      EA_STATE_ERROR,
+      EA_STATE_DEINITIALIZING
+   };
+   ENUM_EA_STATE m_eaState;
+   
+   // EA Configuration
+   ulong    m_magicNumber;
+   bool     m_enableTrading;
+   ENUM_LOG_LEVEL m_logLevel;
+   bool     m_useRangeFadeStrategy;
+   bool     m_useImpulseRiderStrategy;
+   double   m_riskPerTrade;
+   double   m_maxDailyRiskPercent;
+   int      m_maxConcurrentTrades;
+   bool     m_enableBreakEven;
+   double   m_breakEvenAfterPips;
+   bool     m_tradeDuringAsian;
+   bool     m_tradeDuringLondon;
+   bool     m_tradeDuringNewYork;
+   string   m_excludedTimes;
+   int      m_maxSpreadPoints;
+   
+   // Last processed time
+   datetime m_lastProcessedTime;
+   bool     m_isNewBar;
+   
+   // Helper methods
+   bool CheckTradingAllowed();
+   bool CheckNewBar();
+   void ProcessOpenPositions();
+   void ProcessStrategies();
+   
+public:
+   // Constructor and destructor
+   CSVCore();
+   ~CSVCore();
+   
+   // Initialization
+   bool Initialize(
+      ulong magicNumber,
+      bool enableTrading,
+      ENUM_LOG_LEVEL logLevel,
+      bool useRangeFadeStrategy,
+      bool useImpulseRiderStrategy,
+      double riskPerTrade,
+      double maxDailyRiskPercent,
+      int maxConcurrentTrades,
+      bool enableBreakEven,
+      double breakEvenAfterPips,
+      bool tradeDuringAsian,
+      bool tradeDuringLondon,
+      bool tradeDuringNewYork,
+      string excludedTimes,
+      int maxSpreadPoints
+   );
+   
+   // Event handlers
+   void ProcessTick();
+   void ProcessTradeEvent();
+   void ProcessTradeTransaction(const MqlTradeTransaction& trans, 
+                               const MqlTradeRequest& request, 
+                               const MqlTradeResult& result);
+   void ProcessChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam);
+   double ProcessTesterEvent();
+};
+
+//+------------------------------------------------------------------+
+//| Constructor                                                      |
+//+------------------------------------------------------------------+
+CSVCore::CSVCore()
+{
+   m_marketAnalyzer = NULL;
+   m_riskEngine = NULL;
+   m_tradeManager = NULL;
+   m_optimizer = NULL;
+   m_portfolio = NULL;
+   m_strategyCount = 0;
+   m_eaState = EA_STATE_INITIALIZING;
+   m_lastProcessedTime = 0;
+   m_isNewBar = false;
+}
+
+//+------------------------------------------------------------------+
+//| Destructor                                                       |
+//+------------------------------------------------------------------+
+CSVCore::~CSVCore()
+{
+   // Change state to deinitializing
+   m_eaState = EA_STATE_DEINITIALIZING;
+
+   // Clean up strategy array
+   for(int i = 0; i < m_strategyCount; i++) {
+      if(m_strategies[i] != NULL) {
+         delete m_strategies[i];
+         m_strategies[i] = NULL;
+      }
+   }
+   
+   // Clean up components
+   if(m_marketAnalyzer != NULL) {
+      delete m_marketAnalyzer;
+      m_marketAnalyzer = NULL;
+   }
+   
+   if(m_riskEngine != NULL) {
+      delete m_riskEngine;
+      m_riskEngine = NULL;
+   }
+   
+   if(m_tradeManager != NULL) {
+      delete m_tradeManager;
+      m_tradeManager = NULL;
+   }
+   
+   if(m_optimizer != NULL) {
+      delete m_optimizer;
+      m_optimizer = NULL;
+   }
+   
+   if(m_portfolio != NULL) {
+      delete m_portfolio;
+      m_portfolio = NULL;
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Core deinitialized");
+}
+
+//+------------------------------------------------------------------+
+//| Initialize the core and all components                           |
+//+------------------------------------------------------------------+
+bool CSVCore::Initialize(
+   ulong magicNumber,
+   bool enableTrading,
+   ENUM_LOG_LEVEL logLevel,
+   bool useRangeFadeStrategy,
+   bool useImpulseRiderStrategy,
+   double riskPerTrade,
+   double maxDailyRiskPercent,
+   int maxConcurrentTrades,
+   bool enableBreakEven,
+   double breakEvenAfterPips,
+   bool tradeDuringAsian,
+   bool tradeDuringLondon,
+   bool tradeDuringNewYork,
+   string excludedTimes,
+   int maxSpreadPoints
+)
+{
+   // Store configuration
+   m_magicNumber = magicNumber;
+   m_enableTrading = enableTrading;
+   m_logLevel = logLevel;
+   m_useRangeFadeStrategy = useRangeFadeStrategy;
+   m_useImpulseRiderStrategy = useImpulseRiderStrategy;
+   m_riskPerTrade = riskPerTrade;
+   m_maxDailyRiskPercent = maxDailyRiskPercent;
+   m_maxConcurrentTrades = maxConcurrentTrades;
+   m_enableBreakEven = enableBreakEven;
+   m_breakEvenAfterPips = breakEvenAfterPips;
+   m_tradeDuringAsian = tradeDuringAsian;
+   m_tradeDuringLondon = tradeDuringLondon;
+   m_tradeDuringNewYork = tradeDuringNewYork;
+   m_excludedTimes = excludedTimes;
+   m_maxSpreadPoints = maxSpreadPoints;
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Initializing Core components");
+   
+   // Initialize Market Analyzer
+   m_marketAnalyzer = new CSVMarketAnalyzer();
+   if(m_marketAnalyzer == NULL || !m_marketAnalyzer.Initialize()) {
+      CSVUtils::Log(LOG_LEVEL_CRITICAL, __FUNCTION__, "Failed to initialize Market Analyzer");
+      return false;
+   }
+   
+   // Initialize Portfolio
+   m_portfolio = new CSVPortfolio();
+   if(m_portfolio == NULL || !m_portfolio.Initialize(m_magicNumber)) {
+      CSVUtils::Log(LOG_LEVEL_CRITICAL, __FUNCTION__, "Failed to initialize Portfolio");
+      return false;
+   }
+   
+   // Initialize Risk Engine
+   m_riskEngine = new CSVRiskEngine();
+   if(m_riskEngine == NULL || !m_riskEngine.Initialize(
+      m_riskPerTrade, 
+      m_maxDailyRiskPercent, 
+      m_maxConcurrentTrades,
+      m_enableBreakEven,
+      m_breakEvenAfterPips,
+      m_portfolio,
+      m_marketAnalyzer
+   )) {
+      CSVUtils::Log(LOG_LEVEL_CRITICAL, __FUNCTION__, "Failed to initialize Risk Engine");
+      return false;
+   }
+   
+   // Initialize Trade Manager
+   m_tradeManager = new CSVTradeManager();
+   if(m_tradeManager == NULL || !m_tradeManager.Initialize(m_magicNumber, m_riskEngine)) {
+      CSVUtils::Log(LOG_LEVEL_CRITICAL, __FUNCTION__, "Failed to initialize Trade Manager");
+      return false;
+   }
+   
+   // Initialize Optimizer
+   m_optimizer = new CSVOptimizer();
+   if(m_optimizer == NULL || !m_optimizer.Initialize(m_portfolio)) {
+      CSVUtils::Log(LOG_LEVEL_CRITICAL, __FUNCTION__, "Failed to initialize Optimizer");
+      return false;
+   }
+   
+   // Initialize strategies
+   if(m_useRangeFadeStrategy) {
+      CSVStrategyBase* rangeFade = new CSVRangeFadeScalper();
+      if(rangeFade == NULL || !rangeFade.Initialize(m_marketAnalyzer, m_riskEngine)) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to initialize Range Fade Scalper");
+      } else {
+         m_strategies[m_strategyCount++] = rangeFade;
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Range Fade Scalper initialized");
+      }
+   }
+   
+   if(m_useImpulseRiderStrategy) {
+      CSVStrategyBase* impulseRider = new CSVImpulseRiderScalper();
+      if(impulseRider == NULL || !impulseRider.Initialize(m_marketAnalyzer, m_riskEngine)) {
+         CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to initialize Impulse Rider Scalper");
+      } else {
+         m_strategies[m_strategyCount++] = impulseRider;
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Impulse Rider Scalper initialized");
+      }
+   }
+   
+   if(m_strategyCount == 0) {
+      CSVUtils::Log(LOG_LEVEL_CRITICAL, __FUNCTION__, "No strategies were initialized");
+      return false;
+   }
+   
+   m_eaState = EA_STATE_ACTIVE;
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Core initialization completed");
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Check if trading is allowed based on various conditions          |
+//+------------------------------------------------------------------+
+bool CSVCore::CheckTradingAllowed()
+{
+   // Check if trading is globally enabled
+   if(!m_enableTrading) {
+      return false;
+   }
+   
+   // Check EA state
+   if(m_eaState != EA_STATE_ACTIVE) {
+      return false;
+   }
+   
+   // Check session trading restrictions
+   ENUM_MARKET_SESSION currentSession = CSVUtils::GetCurrentSession();
+   if((currentSession == MARKET_SESSION_ASIAN && !m_tradeDuringAsian) ||
+      (currentSession == MARKET_SESSION_LONDON && !m_tradeDuringLondon) ||
+      (currentSession == MARKET_SESSION_NEWYORK && !m_tradeDuringNewYork)) {
+      return false;
+   }
+   
+   // Check excluded time windows
+   if(CSVUtils::IsInExcludedTime(m_excludedTimes)) {
+      return false;
+   }
+   
+   // Check current spread
+   if(m_marketAnalyzer.GetCurrentSpreadPoints() > m_maxSpreadPoints) {
+      return false;
+   }
+   
+   // Check if daily risk limit has been hit
+   if(m_portfolio.GetDailyDrawdownPercent() >= m_maxDailyRiskPercent) {
+      m_eaState = EA_STATE_PAUSED_RISK_LIMIT;
+      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Daily risk limit hit. Trading paused.");
+      return false;
+   }
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Check if we have a new bar                                       |
+//+------------------------------------------------------------------+
+bool CSVCore::CheckNewBar()
+{
+   datetime currentBarTime = iTime(Symbol(), PERIOD_CURRENT, 0);
+   
+   if(currentBarTime > m_lastProcessedTime) {
+      m_lastProcessedTime = currentBarTime;
+      m_isNewBar = true;
+      return true;
+   }
+   
+   m_isNewBar = false;
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Process open positions                                           |
+//+------------------------------------------------------------------+
+void CSVCore::ProcessOpenPositions()
+{
+   // Get all open positions and check for exit signals
+   int totalPositions = PositionsTotal();
+   
+   for(int i = totalPositions - 1; i >= 0; i--) {
+      ulong ticket = PositionGetTicket(i);
+      
+      if(ticket <= 0) continue;
+      
+      // Check if position belongs to our EA
+      if(PositionSelectByTicket(ticket)) {
+         if(PositionGetInteger(POSITION_MAGIC) == m_magicNumber) {
+            string strategyID = PositionGetString(POSITION_COMMENT);
+            
+            // Find the strategy that opened this position
+            for(int j = 0; j < m_strategyCount; j++) {
+               if(StringFind(strategyID, m_strategies[j].GetStrategyID()) >= 0) {
+                  // Check exit signal
+                  string exitReason = "";
+                  bool shouldExit = m_strategies[j].CheckExitSignal(ticket, exitReason);
+                  
+                  if(shouldExit) {
+                     m_tradeManager.ClosePosition(ticket, exitReason);
+                  } else {
+                     // Update trailing stops or break-even if needed
+                     m_riskEngine.ProcessOpenPosition(ticket);
+                  }
+                  
+                  break;
+               }
+            }
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Process strategies for potential entry signals                   |
+//+------------------------------------------------------------------+
+void CSVCore::ProcessStrategies()
+{
+   // Only process entries on new bars or when in timer mode
+   if(!m_isNewBar && !MQLInfoInteger(MQL_TESTER)) return;
+   
+   if(!CheckTradingAllowed()) return;
+   
+   // Check each strategy for entry signals
+   for(int i = 0; i < m_strategyCount; i++) {
+      SVSignalInfo signalInfo;
+      
+      // Check for long signal
+      if(m_strategies[i].CheckEntrySignalLong(signalInfo)) {
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Long signal detected from " + m_strategies[i].GetStrategyID());
+         
+         // Process through risk engine to adjust position size and SL/TP
+         if(m_riskEngine.ValidateAndAdjustEntrySignal(signalInfo, ORDER_TYPE_BUY)) {
+            // Execute the trade
+            m_tradeManager.ExecuteMarketOrder(ORDER_TYPE_BUY, signalInfo);
+         }
+      }
+      
+      // Check for short signal
+      if(m_strategies[i].CheckEntrySignalShort(signalInfo)) {
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Short signal detected from " + m_strategies[i].GetStrategyID());
+         
+         // Process through risk engine to adjust position size and SL/TP
+         if(m_riskEngine.ValidateAndAdjustEntrySignal(signalInfo, ORDER_TYPE_SELL)) {
+            // Execute the trade
+            m_tradeManager.ExecuteMarketOrder(ORDER_TYPE_SELL, signalInfo);
+         }
+      }
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Process tick event                                              |
+//+------------------------------------------------------------------+
+void CSVCore::ProcessTick()
+{
+   // Update market data
+   if(m_marketAnalyzer != NULL) {
+      m_marketAnalyzer.UpdateMarketData();
+   }
+   
+   // Update portfolio state
+   if(m_portfolio != NULL) {
+      m_portfolio.Update();
+   }
+   
+   // Check for new bar
+   CheckNewBar();
+   
+   // Process open positions for potential exits or adjustments
+   ProcessOpenPositions();
+   
+   // Process strategies for potential entries
+   ProcessStrategies();
+}
+
+//+------------------------------------------------------------------+
+//| Process trade event                                              |
+//+------------------------------------------------------------------+
+void CSVCore::ProcessTradeEvent()
+{
+   if(m_portfolio != NULL) {
+      m_portfolio.Update();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Process trade transaction event                                  |
+//+------------------------------------------------------------------+
+void CSVCore::ProcessTradeTransaction(const MqlTradeTransaction& trans, 
+                                    const MqlTradeRequest& request, 
+                                    const MqlTradeResult& result)
+{
+   if(m_tradeManager != NULL) {
+      m_tradeManager.ProcessTradeTransaction(trans, request, result);
+   }
+   
+   if(m_portfolio != NULL) {
+      m_portfolio.Update();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Process chart event                                              |
+//+------------------------------------------------------------------+
+void CSVCore::ProcessChartEvent(const int id, const long &lparam, const double &dparam, const string &sparam)
+{
+   // Handle chart events if needed
+}
+
+//+------------------------------------------------------------------+
+//| Process tester event                                             |
+//+------------------------------------------------------------------+
+double CSVCore::ProcessTesterEvent()
+{
+   double customFitness = 0.0;
+   
+   if(m_optimizer != NULL) {
+      customFitness = m_optimizer.CalculateCustomFitness();
+   }
+   
+   return customFitness;
+}
