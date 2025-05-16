@@ -1,99 +1,103 @@
 //+------------------------------------------------------------------+
-//|                                                SVRiskEngine.mqh |
-//|                                           Copyright 2025, H3nst7 |
-//|                                           https://www.h3nst7.com |
+//|                                             SVRiskEngine.mqh |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2025, H3nst7"
-#property link      "https://www.h3nst7.com"
-#property strict
+#property copyright "Copyright 2025, Scalping Vortex"
+#property link      "https://github.com/H3NST7/ScalpingVortex"
+#property version   "1.00"
 
-#include "ScalpingVortex\SVUtils.mqh"
-#include "ScalpingVortex\SVMarketAnalyzer.mqh"
-#include "ScalpingVortex\SVPortfolio.mqh"
+#include <Trade\SymbolInfo.mqh>
+#include "SVPortfolio.mqh"
+#include "SVMarketAnalyzer.mqh"
+#include "SVUtils.mqh"
 
-// Structure to hold signal information
-struct SVSignalInfo
-{
-   datetime time;           // Signal time
-   ENUM_ORDER_TYPE type;    // Order type
-   double entryPrice;       // Entry price
-   double stopLoss;         // Stop loss price
-   double takeProfit;       // Take profit price
-   double lotSize;          // Lot size
-   string comment;          // Signal comment
-   
-   void Clear()
-   {
-      time = 0;
-      type = ORDER_TYPE_BUY;
-      entryPrice = 0.0;
-      stopLoss = 0.0;
-      takeProfit = 0.0;
-      lotSize = 0.0;
-      comment = "";
-   }
-};
-
-// Risk Engine class
+//+------------------------------------------------------------------+
+//| CSVRiskEngine - Handles risk management and position sizing      |
+//+------------------------------------------------------------------+
 class CSVRiskEngine
 {
 private:
+   // Dependencies
+   CSVPortfolio*     m_portfolio;         // Portfolio management
+   CSVMarketAnalyzer* m_analyzer;         // Market analyzer
+   CSymbolInfo       m_symbolInfo;        // Symbol information
+   
    // Risk parameters
-   double m_riskPerTrade;           // Risk per trade (% of balance)
-   double m_maxDailyRiskPercent;    // Maximum daily risk (% of balance)
-   int m_maxConcurrentTrades;       // Maximum number of concurrent trades
-   bool m_enableBreakEven;          // Enable break-even feature
-   double m_breakEvenAfterPips;     // Move SL to BE after X pips profit
+   string            m_symbol;            // Trading symbol
+   double            m_riskPercent;       // Risk percentage per trade
+   double            m_maxEquityRisk;     // Maximum equity at risk at any time
+   double            m_minRewardRatio;    // Minimum reward-to-risk ratio
+   double            m_maxPositionSize;   // Maximum position size in lots
    
-   // References to other components
-   CSVPortfolio* m_portfolio;       // Portfolio reference
-   CSVMarketAnalyzer* m_analyzer;   // Market analyzer reference
+   // Position sizing methods
+   bool              m_useFixedLots;      // Use fixed lot size
+   double            m_fixedLotSize;      // Fixed lot size
+   bool              m_useRiskBasedLots;  // Use risk-based position sizing
+   bool              m_useATRStops;       // Use ATR-based stop loss
+   double            m_atrMultiplier;     // ATR multiplier for stop loss
    
-   // Risk calculation helpers
-   double CalculatePositionSize(double entryPrice, double stopLoss, ENUM_ORDER_TYPE orderType);
-   double CalculatePositionSizeVolatilityAdjusted(double entryPrice, double stopLoss, ENUM_ORDER_TYPE orderType, double atrMultiplier);
+   // Risk controls
+   bool              m_useEquityProtection; // Use equity protection
+   double            m_equityProtectionLevel; // Equity protection level in percentage
+   bool              m_useDailyLossLimit;    // Use daily loss limit
+   double            m_dailyLossLimit;       // Daily loss limit in percentage
    
-   double CalculateATRBasedStopLoss(ENUM_ORDER_TYPE orderType, double entryPrice, double atrMultiplier);
-   double CalculateATRBasedTakeProfit(ENUM_ORDER_TYPE orderType, double entryPrice, double atrMultiplier);
-   
-   double GetCurrentTotalRiskExposure();
-   bool IsBreakEvenEligible(ulong positionTicket);
-   void ApplyBreakEven(ulong positionTicket);
+   // Private methods
+   double            CalculateRiskBasedLotSize(double entryPrice, double stopLoss);
+   double            CalculateFixedRiskLotSize(double riskAmount, double entryPrice, double stopLoss);
+   double            CalculateATRStopLoss(double entryPrice, int direction);
+   double            PriceToPips(double price1, double price2);
+   double            PipsToPrice(double pips);
+   double            NormalizeLotSize(double lotSize);
    
 public:
-   // Constructor and destructor
-   CSVRiskEngine();
-   ~CSVRiskEngine();
+                     CSVRiskEngine();
+                    ~CSVRiskEngine();
    
    // Initialization
-   bool Initialize(
-      double riskPerTrade,
-      double maxDailyRiskPercent,
-      int maxConcurrentTrades,
-      bool enableBreakEven,
-      double breakEvenAfterPips,
-      CSVPortfolio* portfolio,
-      CSVMarketAnalyzer* analyzer
-   );
+   bool              Initialize(string symbol, CSVPortfolio* portfolio, CSVMarketAnalyzer* analyzer);
    
-   // Risk validation and management
-   bool ValidateAndAdjustEntrySignal(SVSignalInfo &signal, ENUM_ORDER_TYPE orderType);
-   bool ProcessOpenPosition(ulong positionTicket);
-   bool IsTradingAllowed();
+   // Position sizing
+   double            GetPositionSize(double entryPrice, double stopLoss);
+   double            GetStopLossPrice(double entryPrice, int direction);
+   double            GetTakeProfitPrice(double entryPrice, double stopLoss, int direction);
    
-   // Risk parameter getters
-   double GetRiskPerTrade() const { return m_riskPerTrade; }
-   double GetMaxDailyRiskPercent() const { return m_maxDailyRiskPercent; }
-   int GetMaxConcurrentTrades() const { return m_maxConcurrentTrades; }
-   bool GetEnableBreakEven() const { return m_enableBreakEven; }
-   double GetBreakEvenAfterPips() const { return m_breakEvenAfterPips; }
+   // Risk assessment
+   bool              IsTradeRiskAcceptable(double entryPrice, double stopLoss, double lotSize);
+   bool              IsRiskRewardAcceptable(double entryPrice, double stopLoss, double takeProfit, int direction);
+   bool              IsEquityRiskAcceptable();
+   bool              IsDailyLossAcceptable();
    
-   // Risk parameter setters
-   void SetRiskPerTrade(double riskPerTrade) { m_riskPerTrade = riskPerTrade; }
-   void SetMaxDailyRiskPercent(double maxDailyRiskPercent) { m_maxDailyRiskPercent = maxDailyRiskPercent; }
-   void SetMaxConcurrentTrades(int maxConcurrentTrades) { m_maxConcurrentTrades = maxConcurrentTrades; }
-   void SetEnableBreakEven(bool enableBreakEven) { m_enableBreakEven = enableBreakEven; }
-   void SetBreakEvenAfterPips(double breakEvenAfterPips) { m_breakEvenAfterPips = breakEvenAfterPips; }
+   // Risk calculation
+   double            CalculateTradeRisk(double entryPrice, double stopLoss, double lotSize);
+   double            CalculateRiskRewardRatio(double entryPrice, double stopLoss, double takeProfit, int direction);
+   double            CalculateTotalEquityRisk();
+   double            CalculateProfitInPips(double entryPrice, double exitPrice, int direction);
+   double            CalculateProfitInMoney(double entryPrice, double exitPrice, double lotSize, int direction);
+   
+   // Setters
+   void              SetRiskPercent(double riskPercent) { m_riskPercent = riskPercent; }
+   void              SetMaxEquityRisk(double maxRisk) { m_maxEquityRisk = maxRisk; }
+   void              SetMinRewardRatio(double minRatio) { m_minRewardRatio = minRatio; }
+   void              SetMaxPositionSize(double maxSize) { m_maxPositionSize = maxSize; }
+   void              SetFixedLotSize(double lotSize) { m_fixedLotSize = lotSize; }
+   void              UseFixedLots(bool useFixed) { m_useFixedLots = useFixed; }
+   void              UseRiskBasedLots(bool useRiskBased) { m_useRiskBasedLots = useRiskBased; }
+   void              UseATRStops(bool useATR, double atrMultiplier = 2.0) 
+                     { 
+                        m_useATRStops = useATR; 
+                        m_atrMultiplier = atrMultiplier; 
+                     }
+   void              UseEquityProtection(bool useProtection, double level = 90.0) 
+                     { 
+                        m_useEquityProtection = useProtection; 
+                        m_equityProtectionLevel = level; 
+                     }
+   void              UseDailyLossLimit(bool useLimit, double limit = 5.0) 
+                     { 
+                        m_useDailyLossLimit = useLimit; 
+                        m_dailyLossLimit = limit; 
+                     }
 };
 
 //+------------------------------------------------------------------+
@@ -101,14 +105,29 @@ public:
 //+------------------------------------------------------------------+
 CSVRiskEngine::CSVRiskEngine()
 {
-   m_riskPerTrade = 1.0;            // Default 1% risk per trade
-   m_maxDailyRiskPercent = 5.0;     // Default 5% max daily risk
-   m_maxConcurrentTrades = 3;       // Default 3 concurrent trades max
-   m_enableBreakEven = true;        // Default enable break-even
-   m_breakEvenAfterPips = 5.0;      // Default 5 pips for break-even
-   
+   // Initialize dependencies
    m_portfolio = NULL;
    m_analyzer = NULL;
+   
+   // Initialize risk parameters
+   m_symbol = Symbol();
+   m_riskPercent = 2.0;           // 2% risk per trade
+   m_maxEquityRisk = 10.0;        // 10% maximum equity at risk
+   m_minRewardRatio = 1.5;        // 1.5:1 minimum reward-to-risk ratio
+   m_maxPositionSize = 10.0;      // 10 lots maximum position size
+   
+   // Initialize position sizing methods
+   m_useFixedLots = false;
+   m_fixedLotSize = 0.01;
+   m_useRiskBasedLots = true;
+   m_useATRStops = true;
+   m_atrMultiplier = 2.0;
+   
+   // Initialize risk controls
+   m_useEquityProtection = true;
+   m_equityProtectionLevel = 90.0;
+   m_useDailyLossLimit = true;
+   m_dailyLossLimit = 5.0;
 }
 
 //+------------------------------------------------------------------+
@@ -116,189 +135,39 @@ CSVRiskEngine::CSVRiskEngine()
 //+------------------------------------------------------------------+
 CSVRiskEngine::~CSVRiskEngine()
 {
-   // No dynamic memory to free
+   // External objects, don't delete
+   m_portfolio = NULL;
+   m_analyzer = NULL;
 }
 
 //+------------------------------------------------------------------+
-//| Initialize risk engine with parameters                           |
+//| Initialize the risk engine                                       |
 //+------------------------------------------------------------------+
-bool CSVRiskEngine::Initialize(
-   double riskPerTrade,
-   double maxDailyRiskPercent,
-   int maxConcurrentTrades,
-   bool enableBreakEven,
-   double breakEvenAfterPips,
-   CSVPortfolio* portfolio,
-   CSVMarketAnalyzer* analyzer
-)
+bool CSVRiskEngine::Initialize(string symbol, CSVPortfolio* portfolio, CSVMarketAnalyzer* analyzer)
 {
-   if(portfolio == NULL || analyzer == NULL) {
-      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Portfolio or Market Analyzer reference is NULL");
+   // Check parameters
+   if(portfolio == NULL || analyzer == NULL)
+   {
+      Print("CSVRiskEngine::Initialize - Portfolio or analyzer is NULL");
       return false;
    }
    
-   // Store risk parameters
-   m_riskPerTrade = riskPerTrade;
-   m_maxDailyRiskPercent = maxDailyRiskPercent;
-   m_maxConcurrentTrades = maxConcurrentTrades;
-   m_enableBreakEven = enableBreakEven;
-   m_breakEvenAfterPips = breakEvenAfterPips;
-   
-   // Store component references
+   // Store dependencies
    m_portfolio = portfolio;
    m_analyzer = analyzer;
+   m_symbol = symbol;
    
-   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Risk Engine initialized with risk per trade: " + 
-                DoubleToString(m_riskPerTrade, 2) + "%, max daily risk: " + 
-                DoubleToString(m_maxDailyRiskPercent, 2) + "%");
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Validate and adjust entry signal                                 |
-//+------------------------------------------------------------------+
-bool CSVRiskEngine::ValidateAndAdjustEntrySignal(SVSignalInfo &signal, ENUM_ORDER_TYPE orderType)
-{
-   // Check if trading is allowed
-   if(!IsTradingAllowed()) {
-      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Trading not allowed due to risk limits");
+   // Initialize symbol info
+   if(!m_symbolInfo.Name(symbol))
+   {
+      Print("CSVRiskEngine::Initialize - Failed to set symbol name: ", symbol);
       return false;
    }
    
-   // Ensure order type is set
-   signal.type = orderType;
-   
-   // Set entry price if not provided
-   if(signal.entryPrice <= 0.0) {
-      if(orderType == ORDER_TYPE_BUY) {
-         signal.entryPrice = m_analyzer.GetAsk();
-      } else {
-         signal.entryPrice = m_analyzer.GetBid();
-      }
-   }
-   
-   // Calculate ATR-based stop loss if not provided
-   if(signal.stopLoss <= 0.0) {
-      signal.stopLoss = CalculateATRBasedStopLoss(orderType, signal.entryPrice, 1.5);
-   }
-   
-   // Calculate ATR-based take profit if not provided
-   if(signal.takeProfit <= 0.0) {
-      signal.takeProfit = CalculateATRBasedTakeProfit(orderType, signal.entryPrice, 2.0);
-   }
-   
-   // Validate stop loss and take profit distances
-   double minStopDistancePips = 5.0; // Minimum 5 pips for XAUUSD
-   double entryToStopPips;
-   
-   if(orderType == ORDER_TYPE_BUY) {
-      entryToStopPips = CSVUtils::PriceToPips(signal.entryPrice - signal.stopLoss);
-      
-      // Ensure stop loss is below entry price
-      if(signal.stopLoss >= signal.entryPrice) {
-         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Invalid SL - must be below entry for BUY");
-         return false;
-      }
-      
-      // Ensure take profit is above entry price
-      if(signal.takeProfit <= signal.entryPrice) {
-         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Invalid TP - must be above entry for BUY");
-         return false;
-      }
-   } else {
-      entryToStopPips = CSVUtils::PriceToPips(signal.stopLoss - signal.entryPrice);
-      
-      // Ensure stop loss is above entry price
-      if(signal.stopLoss <= signal.entryPrice) {
-         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Invalid SL - must be above entry for SELL");
-         return false;
-      }
-      
-      // Ensure take profit is below entry price
-      if(signal.takeProfit >= signal.entryPrice) {
-         CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Invalid TP - must be below entry for SELL");
-         return false;
-      }
-   }
-   
-   // Check minimum stop distance
-   if(entryToStopPips < minStopDistancePips) {
-      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Stop loss too close to entry price: " + 
-                   DoubleToString(entryToStopPips, 2) + " pips");
-      return false;
-   }
-   
-   // Calculate risk-adjusted position size based on stop loss
-   signal.lotSize = CalculatePositionSizeVolatilityAdjusted(signal.entryPrice, signal.stopLoss, orderType, 1.0);
-   
-   // Ensure lot size is valid
-   if(signal.lotSize <= 0.0) {
-      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Invalid lot size: " + DoubleToString(signal.lotSize, 2));
-      return false;
-   }
-   
-   // Get current total risk exposure
-   double currentRiskExposure = GetCurrentTotalRiskExposure();
-   double entryRiskAmount = m_portfolio.GetRiskAmountForLotSize(signal.lotSize, entryToStopPips);
-   double entryRiskPercent = (entryRiskAmount / m_portfolio.GetBalance()) * 100.0;
-   
-   // Ensure we don't exceed maximum risk exposure
-   if(currentRiskExposure + entryRiskPercent > m_maxDailyRiskPercent) {
-      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Entry would exceed max daily risk: " + 
-                   DoubleToString(currentRiskExposure + entryRiskPercent, 2) + 
-                   "% > " + DoubleToString(m_maxDailyRiskPercent, 2) + "%");
-      return false;
-   }
-   
-   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Signal validated: " + CSVUtils::OrderTypeToString(orderType) + 
-                " Entry: " + DoubleToString(signal.entryPrice, 2) + 
-                " SL: " + DoubleToString(signal.stopLoss, 2) + 
-                " TP: " + DoubleToString(signal.takeProfit, 2) + 
-                " Lot: " + DoubleToString(signal.lotSize, 2));
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Process an open position for risk management                     |
-//+------------------------------------------------------------------+
-bool CSVRiskEngine::ProcessOpenPosition(ulong positionTicket)
-{
-   if(!PositionSelectByTicket(positionTicket)) {
-      return false;
-   }
-   
-   // Check if position belongs to our EA
-   ulong magic = PositionGetInteger(POSITION_MAGIC);
-   if(magic != m_portfolio.GetMagicNumber()) {
-      return false;
-   }
-   
-   // Apply break-even if enabled and conditions met
-   if(m_enableBreakEven && IsBreakEvenEligible(positionTicket)) {
-      ApplyBreakEven(positionTicket);
-   }
-   
-   // TODO: Implement trailing stop logic here if needed
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Check if trading is allowed based on risk limits                 |
-//+------------------------------------------------------------------+
-bool CSVRiskEngine::IsTradingAllowed()
-{
-   // Check if max concurrent trades limit is reached
-   int currentTrades = m_portfolio.GetOpenPositionsCount();
-   if(currentTrades >= m_maxConcurrentTrades) {
-      return false;
-   }
-   
-   // Check if daily risk limit is reached
-   double currentDailyDrawdown = m_portfolio.GetDailyDrawdownPercent();
-   if(currentDailyDrawdown >= m_maxDailyRiskPercent) {
+   // Refresh symbol rates
+   if(!m_symbolInfo.RefreshRates())
+   {
+      Print("CSVRiskEngine::Initialize - Failed to refresh rates for symbol: ", symbol);
       return false;
    }
    
@@ -306,228 +175,344 @@ bool CSVRiskEngine::IsTradingAllowed()
 }
 
 //+------------------------------------------------------------------+
-//| Calculate position size based on fixed risk percentage           |
+//| Get position size based on risk parameters                       |
 //+------------------------------------------------------------------+
-double CSVRiskEngine::CalculatePositionSize(double entryPrice, double stopLoss, ENUM_ORDER_TYPE orderType)
+double CSVRiskEngine::GetPositionSize(double entryPrice, double stopLoss)
 {
-   double riskAmount = m_portfolio.GetBalance() * (m_riskPerTrade / 100.0);
-   double stopLossPips;
+   double lotSize = 0.0;
    
-   if(orderType == ORDER_TYPE_BUY) {
-      stopLossPips = CSVUtils::PriceToPips(entryPrice - stopLoss);
-   } else {
-      stopLossPips = CSVUtils::PriceToPips(stopLoss - entryPrice);
+   // If fixed lot size is enabled, use it
+   if(m_useFixedLots)
+   {
+      lotSize = m_fixedLotSize;
+   }
+   // If risk-based position sizing is enabled, calculate lot size
+   else if(m_useRiskBasedLots)
+   {
+      lotSize = CalculateRiskBasedLotSize(entryPrice, stopLoss);
    }
    
-   // Calculate lot size based on risk amount and stop loss distance
-   double lotSize = m_portfolio.CalculateLotSizeFromRisk(riskAmount, stopLossPips);
+   // Apply maximum position size limit
+   lotSize = MathMin(lotSize, m_maxPositionSize);
    
-   // Normalize lot size to valid value
-   lotSize = CSVUtils::NormalizeLotSize(lotSize);
-   
-   return lotSize;
+   // Normalize lot size
+   return NormalizeLotSize(lotSize);
 }
 
 //+------------------------------------------------------------------+
-//| Calculate position size with volatility adjustment               |
+//| Get stop loss price based on risk parameters                     |
 //+------------------------------------------------------------------+
-double CSVRiskEngine::CalculatePositionSizeVolatilityAdjusted(double entryPrice, double stopLoss, ENUM_ORDER_TYPE orderType, double atrMultiplier)
+double CSVRiskEngine::GetStopLossPrice(double entryPrice, int direction)
 {
-   // Get base position size using fixed risk percentage
-   double basePositionSize = CalculatePositionSize(entryPrice, stopLoss, orderType);
-   
-   // Adjust position size based on volatility
-   double volatilityIndex = m_analyzer.GetVolatilityIndex();
-   double adjustedPositionSize = basePositionSize;
-   
-   if(volatilityIndex > 1.5) {
-      // High volatility - reduce position size
-      adjustedPositionSize = basePositionSize / volatilityIndex;
-   } else if(volatilityIndex < 0.5) {
-      // Low volatility - can potentially increase position size
-      // but cap it at 1.5x base size to avoid excessive risk
-      adjustedPositionSize = MathMin(basePositionSize * 1.5, basePositionSize / volatilityIndex);
+   // If ATR-based stop loss is enabled, calculate it
+   if(m_useATRStops && m_analyzer != NULL)
+   {
+      return CalculateATRStopLoss(entryPrice, direction);
    }
    
-   // Normalize lot size to valid value
-   adjustedPositionSize = CSVUtils::NormalizeLotSize(adjustedPositionSize);
+   // Default stop loss - 20 pips
+   double stopDistance = 20.0 * m_symbolInfo.Point() * 10;
    
-   return adjustedPositionSize;
+   if(direction > 0) // Long position
+   {
+      return entryPrice - stopDistance;
+   }
+   else // Short position
+   {
+      return entryPrice + stopDistance;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Get take profit price based on risk parameters                   |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::GetTakeProfitPrice(double entryPrice, double stopLoss, int direction)
+{
+   // Calculate stop loss distance
+   double stopDistance = MathAbs(entryPrice - stopLoss);
+   
+   // Calculate take profit distance based on minimum reward ratio
+   double tpDistance = stopDistance * m_minRewardRatio;
+   
+   if(direction > 0) // Long position
+   {
+      return entryPrice + tpDistance;
+   }
+   else // Short position
+   {
+      return entryPrice - tpDistance;
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check if trade risk is acceptable                                |
+//+------------------------------------------------------------------+
+bool CSVRiskEngine::IsTradeRiskAcceptable(double entryPrice, double stopLoss, double lotSize)
+{
+   // Calculate trade risk in money
+   double riskMoney = CalculateTradeRisk(entryPrice, stopLoss, lotSize);
+   
+   // Calculate account equity
+   double equity = m_portfolio != NULL ? m_portfolio.GetAccountEquity() : AccountInfoDouble(ACCOUNT_EQUITY);
+   
+   // Calculate risk percentage
+   double riskPercent = riskMoney / equity * 100.0;
+   
+   // Check if risk is acceptable
+   return (riskPercent <= m_riskPercent);
+}
+
+//+------------------------------------------------------------------+
+//| Check if risk/reward ratio is acceptable                         |
+//+------------------------------------------------------------------+
+bool CSVRiskEngine::IsRiskRewardAcceptable(double entryPrice, double stopLoss, double takeProfit, int direction)
+{
+   // Calculate risk/reward ratio
+   double rrRatio = CalculateRiskRewardRatio(entryPrice, stopLoss, takeProfit, direction);
+   
+   // Check if ratio is acceptable
+   return (rrRatio >= m_minRewardRatio);
+}
+
+//+------------------------------------------------------------------+
+//| Check if total equity risk is acceptable                         |
+//+------------------------------------------------------------------+
+bool CSVRiskEngine::IsEquityRiskAcceptable()
+{
+   // Check if equity protection is enabled
+   if(!m_useEquityProtection)
+      return true;
+      
+   // Calculate total equity risk
+   double totalRisk = CalculateTotalEquityRisk();
+   
+   // Check if total risk is acceptable
+   return (totalRisk <= m_maxEquityRisk);
+}
+
+//+------------------------------------------------------------------+
+//| Check if daily loss is acceptable                                |
+//+------------------------------------------------------------------+
+bool CSVRiskEngine::IsDailyLossAcceptable()
+{
+   // Check if daily loss limit is enabled
+   if(!m_useDailyLossLimit || m_portfolio == NULL)
+      return true;
+      
+   // Get daily loss percentage
+   double dailyLoss = m_portfolio.GetDailyLoss();
+   double equity = m_portfolio.GetAccountEquity();
+   double dailyLossPercent = dailyLoss / equity * 100.0;
+   
+   // Check if daily loss is acceptable
+   return (dailyLossPercent <= m_dailyLossLimit);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate trade risk in money                                    |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateTradeRisk(double entryPrice, double stopLoss, double lotSize)
+{
+   // Calculate stop loss distance in points
+   double stopDistance = PriceToPips(entryPrice, stopLoss);
+   
+   // Get tick value
+   double tickValue = m_symbolInfo.TickValue();
+   
+   // Calculate risk in money
+   return stopDistance * tickValue * lotSize;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate risk/reward ratio                                      |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateRiskRewardRatio(double entryPrice, double stopLoss, double takeProfit, int direction)
+{
+   // Check if parameters are valid
+   if(stopLoss <= 0.0 || takeProfit <= 0.0)
+      return 0.0;
+      
+   // Calculate stop loss and take profit distances
+   double stopDistance = MathAbs(entryPrice - stopLoss);
+   double tpDistance = MathAbs(entryPrice - takeProfit);
+   
+   // Calculate reward/risk ratio
+   return direction > 0 ? tpDistance / stopDistance : tpDistance / stopDistance;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate total equity at risk                                   |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateTotalEquityRisk()
+{
+   double totalRisk = 0.0;
+   
+   // Check if portfolio is available
+   if(m_portfolio == NULL)
+      return 0.0;
+      
+   // Get account equity
+   double equity = m_portfolio.GetAccountEquity();
+   
+   // Loop through all open positions
+   for(int i = 0; i < PositionsTotal(); i++)
+   {
+      // Get position ticket
+      ulong ticket = PositionGetTicket(i);
+      if(ticket == 0)
+         continue;
+         
+      // Check if position belongs to our symbol
+      if(PositionGetString(POSITION_SYMBOL) != m_symbol)
+         continue;
+         
+      // Get position details
+      double openPrice = PositionGetDouble(POSITION_PRICE_OPEN);
+      double stopLoss = PositionGetDouble(POSITION_SL);
+      double volume = PositionGetDouble(POSITION_VOLUME);
+      
+      // Skip positions without stop loss
+      if(stopLoss <= 0.0)
+         continue;
+         
+      // Calculate position risk
+      double riskMoney = CalculateTradeRisk(openPrice, stopLoss, volume);
+      double riskPercent = riskMoney / equity * 100.0;
+      
+      // Add to total risk
+      totalRisk += riskPercent;
+   }
+   
+   return totalRisk;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate profit in pips                                         |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateProfitInPips(double entryPrice, double exitPrice, int direction)
+{
+   double pips = 0.0;
+   
+   if(direction > 0) // Long position
+   {
+      pips = PriceToPips(exitPrice, entryPrice);
+   }
+   else // Short position
+   {
+      pips = PriceToPips(entryPrice, exitPrice);
+   }
+   
+   return pips;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate profit in money                                        |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateProfitInMoney(double entryPrice, double exitPrice, double lotSize, int direction)
+{
+   // Calculate profit in pips
+   double pips = CalculateProfitInPips(entryPrice, exitPrice, direction);
+   
+   // Get tick value
+   double tickValue = m_symbolInfo.TickValue();
+   
+   // Calculate profit in money
+   return pips * tickValue * lotSize;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate risk-based lot size                                    |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateRiskBasedLotSize(double entryPrice, double stopLoss)
+{
+   // Check if parameters are valid
+   if(stopLoss <= 0.0 || entryPrice <= 0.0)
+      return m_fixedLotSize;
+      
+   // Get account equity
+   double equity = m_portfolio != NULL ? m_portfolio.GetAccountEquity() : AccountInfoDouble(ACCOUNT_EQUITY);
+   
+   // Calculate risk amount in money
+   double riskAmount = equity * m_riskPercent / 100.0;
+   
+   // Calculate lot size based on risk amount
+   return CalculateFixedRiskLotSize(riskAmount, entryPrice, stopLoss);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate lot size for fixed risk amount                         |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::CalculateFixedRiskLotSize(double riskAmount, double entryPrice, double stopLoss)
+{
+   // Calculate stop loss distance in points
+   double stopDistance = PriceToPips(entryPrice, stopLoss);
+   
+   // Check if stop distance is valid
+   if(stopDistance <= 0.0)
+      return m_fixedLotSize;
+      
+   // Get tick value
+   double tickValue = m_symbolInfo.TickValue();
+   
+   // Calculate lot size
+   return riskAmount / (stopDistance * tickValue);
 }
 
 //+------------------------------------------------------------------+
 //| Calculate ATR-based stop loss                                    |
 //+------------------------------------------------------------------+
-double CSVRiskEngine::CalculateATRBasedStopLoss(ENUM_ORDER_TYPE orderType, double entryPrice, double atrMultiplier)
+double CSVRiskEngine::CalculateATRStopLoss(double entryPrice, int direction)
 {
-   // Get ATR value from M5 timeframe (suitable for scalping)
-   double atr = m_analyzer.GetATR(PERIOD_M5, 14, 0);
-   
-   // Calculate stop loss distance based on ATR
-   double stopLossDistance = atr * atrMultiplier;
-   
-   if(orderType == ORDER_TYPE_BUY) {
-      return entryPrice - stopLossDistance;
-   } else {
-      return entryPrice + stopLossDistance;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Calculate ATR-based take profit                                  |
-//+------------------------------------------------------------------+
-double CSVRiskEngine::CalculateATRBasedTakeProfit(ENUM_ORDER_TYPE orderType, double entryPrice, double atrMultiplier)
-{
-   // Get ATR value from M5 timeframe (suitable for scalping)
-   double atr = m_analyzer.GetATR(PERIOD_M5, 14, 0);
-   
-   // Calculate take profit distance based on ATR
-   double takeProfitDistance = atr * atrMultiplier;
-   
-   if(orderType == ORDER_TYPE_BUY) {
-      return entryPrice + takeProfitDistance;
-   } else {
-      return entryPrice - takeProfitDistance;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Get current total risk exposure as percentage of balance         |
-//+------------------------------------------------------------------+
-double CSVRiskEngine::GetCurrentTotalRiskExposure()
-{
-   double totalRiskAmount = 0.0;
-   int totalPositions = PositionsTotal();
-   
-   for(int i = 0; i < totalPositions; i++) {
-      ulong posTicket = PositionGetTicket(i);
+   // Check if analyzer is available
+   if(m_analyzer == NULL)
+      return 0.0;
       
-      if(PositionSelectByTicket(posTicket)) {
-         // Skip positions that don't belong to our EA
-         if(PositionGetInteger(POSITION_MAGIC) != m_portfolio.GetMagicNumber()) {
-            continue;
-         }
-         
-         double posLotSize = PositionGetDouble(POSITION_VOLUME);
-         double posStopLoss = PositionGetDouble(POSITION_SL);
-         double posEntryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-         ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-         
-         // Calculate stop loss distance in pips
-         double slDistancePips;
-         
-         if(posType == POSITION_TYPE_BUY) {
-            slDistancePips = CSVUtils::PriceToPips(posEntryPrice - posStopLoss);
-         } else {
-            slDistancePips = CSVUtils::PriceToPips(posStopLoss - posEntryPrice);
-         }
-         
-         // Calculate risk amount for this position
-         double posRiskAmount = m_portfolio.GetRiskAmountForLotSize(posLotSize, slDistancePips);
-         
-         // Add to total risk amount
-         totalRiskAmount += posRiskAmount;
-      }
+   // Get current ATR value
+   double atr = m_analyzer.GetAverageTrueRange();
+   
+   // Calculate stop loss distance
+   double stopDistance = atr * m_atrMultiplier;
+   
+   if(direction > 0) // Long position
+   {
+      return entryPrice - stopDistance;
    }
-   
-   // Calculate risk as percentage of balance
-   double balance = m_portfolio.GetBalance();
-   double riskPercent = (balance > 0.0) ? (totalRiskAmount / balance) * 100.0 : 0.0;
-   
-   return riskPercent;
+   else // Short position
+   {
+      return entryPrice + stopDistance;
+   }
 }
 
 //+------------------------------------------------------------------+
-//| Check if position is eligible for break-even                     |
+//| Convert price difference to pips                                 |
 //+------------------------------------------------------------------+
-bool CSVRiskEngine::IsBreakEvenEligible(ulong positionTicket)
+double CSVRiskEngine::PriceToPips(double price1, double price2)
 {
-   if(!PositionSelectByTicket(positionTicket)) {
-      return false;
-   }
-   
-   double posEntryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-   double posStopLoss = PositionGetDouble(POSITION_SL);
-   double currentPrice = 0.0;
-   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-   
-   // Get current bid or ask price depending on position type
-   if(posType == POSITION_TYPE_BUY) {
-      currentPrice = m_analyzer.GetBid();
-   } else {
-      currentPrice = m_analyzer.GetAsk();
-   }
-   
-   // Calculate current profit in pips
-   double currentProfitPips;
-   
-   if(posType == POSITION_TYPE_BUY) {
-      currentProfitPips = CSVUtils::PriceToPips(currentPrice - posEntryPrice);
-   } else {
-      currentProfitPips = CSVUtils::PriceToPips(posEntryPrice - currentPrice);
-   }
-   
-   // Check if position is already at break-even
-   if(posType == POSITION_TYPE_BUY && posStopLoss >= posEntryPrice) {
-      return false;
-   } else if(posType == POSITION_TYPE_SELL && posStopLoss <= posEntryPrice) {
-      return false;
-   }
-   
-   // Check if current profit is enough to move to break-even
-   return (currentProfitPips >= m_breakEvenAfterPips);
+   return MathAbs(price1 - price2) / m_symbolInfo.Point();
 }
 
 //+------------------------------------------------------------------+
-//| Apply break-even to a position                                   |
+//| Convert pips to price difference                                 |
 //+------------------------------------------------------------------+
-void CSVRiskEngine::ApplyBreakEven(ulong positionTicket)
+double CSVRiskEngine::PipsToPrice(double pips)
 {
-   if(!PositionSelectByTicket(positionTicket)) {
-      return;
-   }
+   return pips * m_symbolInfo.Point();
+}
+
+//+------------------------------------------------------------------+
+//| Normalize lot size according to symbol settings                  |
+//+------------------------------------------------------------------+
+double CSVRiskEngine::NormalizeLotSize(double lotSize)
+{
+   // Get lot size constraints
+   double minVolume = m_symbolInfo.LotsMin();
+   double maxVolume = m_symbolInfo.LotsMax();
+   double stepVolume = m_symbolInfo.LotsStep();
    
-   double posEntryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-   double posStopLoss = PositionGetDouble(POSITION_SL);
-   double posTakeProfit = PositionGetDouble(POSITION_TP);
-   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
+   // Normalize volume
+   lotSize = MathMax(minVolume, lotSize);
+   lotSize = MathMin(maxVolume, lotSize);
+   lotSize = MathRound(lotSize / stepVolume) * stepVolume;
    
-   // Calculate break-even stop loss with 1 pip buffer (in profit)
-   double breakEvenSL;
-   
-   if(posType == POSITION_TYPE_BUY) {
-      breakEvenSL = posEntryPrice + CSVUtils::PipsToPrice(1.0);
-   } else {
-      breakEvenSL = posEntryPrice - CSVUtils::PipsToPrice(1.0);
-   }
-   
-   // Check if current SL is already better than break-even
-   if(posType == POSITION_TYPE_BUY && posStopLoss >= breakEvenSL) {
-      return;
-   } else if(posType == POSITION_TYPE_SELL && posStopLoss <= breakEvenSL) {
-      return;
-   }
-   
-   // Create trade object for position modification
-   MqlTradeRequest request;
-   MqlTradeResult result;
-   ZeroMemory(request);
-   ZeroMemory(result);
-   
-   request.action = TRADE_ACTION_SLTP;
-   request.position = positionTicket;
-   request.symbol = Symbol();
-   request.sl = breakEvenSL;
-   request.tp = posTakeProfit; // Keep the same TP
-   
-   bool success = OrderSend(request, result);
-   
-   if(success && result.retcode == TRADE_RETCODE_DONE) {
-      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Break-even applied for ticket #" + 
-                   IntegerToString(positionTicket) + " new SL: " + DoubleToString(breakEvenSL, 2));
-   } else {
-      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to apply break-even for ticket #" + 
-                   IntegerToString(positionTicket) + " Error: " + 
-                   IntegerToString(result.retcode));
-   }
+   return NormalizeDouble(lotSize, 2);
 }
