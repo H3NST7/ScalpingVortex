@@ -1,980 +1,389 @@
 //+------------------------------------------------------------------+
-//|                                            SVMarketAnalyzer.mqh |
-//|                                           Copyright 2025, H3nst7 |
-//|                                           https://www.h3nst7.com |
+//|                                                     SVUtils.mqh   |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2025, H3nst7"
-#property link      "https://www.h3nst7.com"
+#property copyright "ScalpingVortex"
+#property link      "https://github.com/H3NST7/ScalpingVortex"
+#property version   "1.00"
 #property strict
 
-#include "SVUtils.mqh"
-
-// Market Analyzer class for XAUUSD-specific analysis
-class CSVMarketAnalyzer
-{
-private:
-   // Price data
-   double m_bidPrice;
-   double m_askPrice;
-   double m_lastPrice;
-   double m_spreadPoints;
-   
-   // OHLC arrays for different timeframes
-   double m_closeM1[];  // M1 close prices
-   double m_openM1[];   // M1 open prices
-   double m_highM1[];   // M1 high prices
-   double m_lowM1[];    // M1 low prices
-   
-   double m_closeM5[];  // M5 close prices
-   double m_openM5[];   // M5 open prices
-   double m_highM5[];   // M5 high prices
-   double m_lowM5[];    // M5 low prices
-   
-   double m_closeM15[]; // M15 close prices
-   double m_highM15[];  // M15 high prices
-   double m_lowM15[];   // M15 low prices
-   
-   double m_closeH1[];  // H1 close prices
-   double m_highH1[];   // H1 high prices
-   double m_lowH1[];    // H1 low prices
-   
-   // Technical indicators
-   double m_atr5M1[];   // ATR 5 on M1
-   double m_atr14M1[];  // ATR 14 on M1
-   double m_atr5M5[];   // ATR 5 on M5
-   double m_atr14M5[];  // ATR 14 on M5
-   double m_atr14M15[]; // ATR 14 on M15
-   double m_atr14H1[];  // ATR 14 on H1
-   
-   double m_rsi7M1[];   // RSI 7 on M1
-   double m_rsi14M1[];  // RSI 14 on M1
-   double m_rsi7M5[];   // RSI 7 on M5
-   double m_rsi14M5[];  // RSI 14 on M5
-   
-   double m_ema5M1[];   // EMA 5 on M1
-   double m_ema10M1[];  // EMA 10 on M1
-   double m_ema20M1[];  // EMA 20 on M1
-   double m_ema50M1[];  // EMA 50 on M1
-   
-   double m_ema5M5[];   // EMA 5 on M5
-   double m_ema10M5[];  // EMA 10 on M5
-   double m_ema20M5[];  // EMA 20 on M5
-   double m_ema50M5[];  // EMA 50 on M5
-   
-   double m_ema20M15[]; // EMA 20 on M15
-   double m_ema50M15[]; // EMA 50 on M15
-   double m_ema200M15[];// EMA 200 on M15
-   
-   double m_bbandsUpperM1[]; // Bollinger Bands Upper on M1
-   double m_bbandsMidM1[];   // Bollinger Bands Middle on M1
-   double m_bbandsLowerM1[]; // Bollinger Bands Lower on M1
-   
-   double m_bbandsUpperM5[]; // Bollinger Bands Upper on M5
-   double m_bbandsMidM5[];   // Bollinger Bands Middle on M5
-   double m_bbandsLowerM5[]; // Bollinger Bands Lower on M5
-   
-   double m_stochMainM1[];   // Stochastic Main on M1
-   double m_stochSignalM1[]; // Stochastic Signal on M1
-   
-   double m_stochMainM5[];   // Stochastic Main on M5
-   double m_stochSignalM5[]; // Stochastic Signal on M5
-   
-   // Volatility tracking
-   double m_volatilityIndex;     // Current volatility index (normalized ATR relative to historical)
-   double m_spreadHistory[];     // Historical spread values
-   int m_spreadHistoryCount;     // Number of spread values stored
-   double m_averageSpread;       // Average spread
-   double m_maxSpread;           // Maximum spread
-   
-   // Market microstructure
-   double m_tickVolumeM1[];          // Tick volume on M1
-   double m_tickVolumeM5[];          // Tick volume on M5
-   double m_averageTickVolumeM1;     // Average tick volume on M1
-   double m_averageTickVolumeM5;     // Average tick volume on M5
-   
-   // Helper methods
-   bool InitializeIndicators();
-   bool UpdateIndicators();
-   void UpdateVolatilityIndex();
-   void UpdateSpreadHistory();
-   void UpdateTickVolumeAnalysis();
-   
-public:
-   // Constructor and destructor
-   CSVMarketAnalyzer();
-   ~CSVMarketAnalyzer();
-   
-   // Initialization
-   bool Initialize();
-   
-   // Data updates
-   bool UpdateMarketData();
-   
-   // Price data access
-   double GetBid() const { return m_bidPrice; }
-   double GetAsk() const { return m_askPrice; }
-   double GetLastPrice() const { return m_lastPrice; }
-   double GetCurrentSpreadPoints() const { return m_spreadPoints; }
-   double GetAverageSpread() const { return m_averageSpread; }
-   double GetMaxSpread() const { return m_maxSpread; }
-   
-   // Indicator access methods
-   double GetATR(ENUM_TIMEFRAMES timeframe, int period, int shift = 0);
-   double GetRSI(ENUM_TIMEFRAMES timeframe, int period, int shift = 0);
-   double GetEMA(ENUM_TIMEFRAMES timeframe, int period, int shift = 0);
-   
-   void GetBollingerBands(ENUM_TIMEFRAMES timeframe, int shift, double &upper, double &middle, double &lower);
-   void GetStochastic(ENUM_TIMEFRAMES timeframe, int shift, double &main, double &signal);
-   
-   // OHLC data access
-   double GetClose(ENUM_TIMEFRAMES timeframe, int shift);
-   double GetOpen(ENUM_TIMEFRAMES timeframe, int shift);
-   double GetHigh(ENUM_TIMEFRAMES timeframe, int shift);
-   double GetLow(ENUM_TIMEFRAMES timeframe, int shift);
-   
-   // Market condition analysis
-   double GetVolatilityIndex() const { return m_volatilityIndex; }
-   bool IsHighVolatility() const { return m_volatilityIndex > 1.5; }
-   bool IsLowVolatility() const { return m_volatilityIndex < 0.5; }
-   
-   bool IsOverbought(ENUM_TIMEFRAMES timeframe, int shift = 0);
-   bool IsOversold(ENUM_TIMEFRAMES timeframe, int shift = 0);
-   
-   bool IsBullishTrend(ENUM_TIMEFRAMES timeframe, int shift = 0);
-   bool IsBearishTrend(ENUM_TIMEFRAMES timeframe, int shift = 0);
-   
-   bool IsRangebound(ENUM_TIMEFRAMES timeframe, int barsToCheck, int shift = 0);
-   
-   // Volume analysis
-   double GetTickVolume(ENUM_TIMEFRAMES timeframe, int shift);
-   double GetAverageTickVolume(ENUM_TIMEFRAMES timeframe);
-   bool IsVolumeSpike(ENUM_TIMEFRAMES timeframe, int shift);
-   
-   // Pattern recognition
-   bool IsPinBar(ENUM_TIMEFRAMES timeframe, int shift);
-   bool IsEngulfing(ENUM_TIMEFRAMES timeframe, bool bullish, int shift);
-   bool IsDoji(ENUM_TIMEFRAMES timeframe, int shift);
-};
+//+------------------------------------------------------------------+
+//| Date and time utility functions                                  |
+//+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
-//| Constructor                                                      |
+//| Format date/time as a string                                     |
 //+------------------------------------------------------------------+
-CSVMarketAnalyzer::CSVMarketAnalyzer()
+string FormatDateTime(datetime time)
 {
-   m_bidPrice = 0.0;
-   m_askPrice = 0.0;
-   m_lastPrice = 0.0;
-   m_spreadPoints = 0.0;
+   string result;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
    
-   m_volatilityIndex = 1.0;
-   m_spreadHistoryCount = 0;
-   m_averageSpread = 0.0;
-   m_maxSpread = 0.0;
+   result = StringFormat("%04d-%02d-%02d %02d:%02d:%02d",
+                     dt.year,
+                     dt.mon,
+                     dt.day,
+                     dt.hour,
+                     dt.min,
+                     dt.sec);
    
-   m_averageTickVolumeM1 = 0.0;
-   m_averageTickVolumeM5 = 0.0;
-   
-   ArrayResize(m_spreadHistory, 1000);
+   return result;
 }
 
 //+------------------------------------------------------------------+
-//| Destructor                                                       |
+//| Format date as a string                                          |
 //+------------------------------------------------------------------+
-CSVMarketAnalyzer::~CSVMarketAnalyzer()
+string FormatDate(datetime time)
 {
-   // Clean up not necessary for arrays in MQL5
+   string result;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   
+   result = StringFormat("%04d-%02d-%02d",
+                     dt.year,
+                     dt.mon,
+                     dt.day);
+   
+   return result;
 }
 
 //+------------------------------------------------------------------+
-//| Initialize the market analyzer                                   |
+//| Format time as a string                                          |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::Initialize()
+string FormatTime(datetime time)
 {
-   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Initializing Market Analyzer");
+   string result;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
    
-   if(!InitializeIndicators()) {
-      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to initialize indicators");
-      return false;
-   }
+   result = StringFormat("%02d:%02d:%02d",
+                     dt.hour,
+                     dt.min,
+                     dt.sec);
    
-   // Update market data
-   if(!UpdateMarketData()) {
-      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to update initial market data");
-      return false;
-   }
-   
-   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Market Analyzer initialized successfully");
-   return true;
+   return result;
 }
 
 //+------------------------------------------------------------------+
-//| Initialize technical indicators                                  |
+//| Check if the current hour is within trading hours                |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::InitializeIndicators()
+bool IsTradingHour()
 {
-   // Set up arrays for OHLC data
-   ArraySetAsSeries(m_closeM1, true);
-   ArraySetAsSeries(m_openM1, true);
-   ArraySetAsSeries(m_highM1, true);
-   ArraySetAsSeries(m_lowM1, true);
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int hour = dt.hour;
    
-   ArraySetAsSeries(m_closeM5, true);
-   ArraySetAsSeries(m_openM5, true);
-   ArraySetAsSeries(m_highM5, true);
-   ArraySetAsSeries(m_lowM5, true);
-   
-   ArraySetAsSeries(m_closeM15, true);
-   ArraySetAsSeries(m_highM15, true);
-   ArraySetAsSeries(m_lowM15, true);
-   
-   ArraySetAsSeries(m_closeH1, true);
-   ArraySetAsSeries(m_highH1, true);
-   ArraySetAsSeries(m_lowH1, true);
-   
-   // Set up arrays for technical indicators
-   ArraySetAsSeries(m_atr5M1, true);
-   ArraySetAsSeries(m_atr14M1, true);
-   ArraySetAsSeries(m_atr5M5, true);
-   ArraySetAsSeries(m_atr14M5, true);
-   ArraySetAsSeries(m_atr14M15, true);
-   ArraySetAsSeries(m_atr14H1, true);
-   
-   ArraySetAsSeries(m_rsi7M1, true);
-   ArraySetAsSeries(m_rsi14M1, true);
-   ArraySetAsSeries(m_rsi7M5, true);
-   ArraySetAsSeries(m_rsi14M5, true);
-   
-   ArraySetAsSeries(m_ema5M1, true);
-   ArraySetAsSeries(m_ema10M1, true);
-   ArraySetAsSeries(m_ema20M1, true);
-   ArraySetAsSeries(m_ema50M1, true);
-   
-   ArraySetAsSeries(m_ema5M5, true);
-   ArraySetAsSeries(m_ema10M5, true);
-   ArraySetAsSeries(m_ema20M5, true);
-   ArraySetAsSeries(m_ema50M5, true);
-   
-   ArraySetAsSeries(m_ema20M15, true);
-   ArraySetAsSeries(m_ema50M15, true);
-   ArraySetAsSeries(m_ema200M15, true);
-   
-   ArraySetAsSeries(m_bbandsUpperM1, true);
-   ArraySetAsSeries(m_bbandsMidM1, true);
-   ArraySetAsSeries(m_bbandsLowerM1, true);
-   
-   ArraySetAsSeries(m_bbandsUpperM5, true);
-   ArraySetAsSeries(m_bbandsMidM5, true);
-   ArraySetAsSeries(m_bbandsLowerM5, true);
-   
-   ArraySetAsSeries(m_stochMainM1, true);
-   ArraySetAsSeries(m_stochSignalM1, true);
-   
-   ArraySetAsSeries(m_stochMainM5, true);
-   ArraySetAsSeries(m_stochSignalM5, true);
-   
-   ArraySetAsSeries(m_tickVolumeM1, true);
-   ArraySetAsSeries(m_tickVolumeM5, true);
-   
-   // Update all indicators
-   return UpdateIndicators();
+   // Define trading hours (adjust as needed)
+   return (hour >= 8 && hour < 20);
 }
 
 //+------------------------------------------------------------------+
-//| Update technical indicators                                      |
+//| Calculate minutes since the start of the day                     |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::UpdateIndicators()
+int MinutesSinceDayStart(datetime time)
 {
-   // Update OHLC data
-   int copied = 0;
-   
-   // M1 data
-   copied = CopyClose(Symbol(), PERIOD_M1, 0, 100, m_closeM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyOpen(Symbol(), PERIOD_M1, 0, 100, m_openM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyHigh(Symbol(), PERIOD_M1, 0, 100, m_highM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyLow(Symbol(), PERIOD_M1, 0, 100, m_lowM1);
-   if(copied <= 0) return false;
-   
-   // M5 data
-   copied = CopyClose(Symbol(), PERIOD_M5, 0, 100, m_closeM5);
-   if(copied <= 0) return false;
-   
-   copied = CopyOpen(Symbol(), PERIOD_M5, 0, 100, m_openM5);
-   if(copied <= 0) return false;
-   
-   copied = CopyHigh(Symbol(), PERIOD_M5, 0, 100, m_highM5);
-   if(copied <= 0) return false;
-   
-   copied = CopyLow(Symbol(), PERIOD_M5, 0, 100, m_lowM5);
-   if(copied <= 0) return false;
-   
-   // M15 data
-   copied = CopyClose(Symbol(), PERIOD_M15, 0, 100, m_closeM15);
-   if(copied <= 0) return false;
-   
-   copied = CopyHigh(Symbol(), PERIOD_M15, 0, 100, m_highM15);
-   if(copied <= 0) return false;
-   
-   copied = CopyLow(Symbol(), PERIOD_M15, 0, 100, m_lowM15);
-   if(copied <= 0) return false;
-   
-   // H1 data
-   copied = CopyClose(Symbol(), PERIOD_H1, 0, 100, m_closeH1);
-   if(copied <= 0) return false;
-   
-   copied = CopyHigh(Symbol(), PERIOD_H1, 0, 100, m_highH1);
-   if(copied <= 0) return false;
-   
-   copied = CopyLow(Symbol(), PERIOD_H1, 0, 100, m_lowH1);
-   if(copied <= 0) return false;
-   
-   // ATR indicators
-   copied = CopyBuffer(iATR(Symbol(), PERIOD_M1, 5), 0, 0, 100, m_atr5M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iATR(Symbol(), PERIOD_M1, 14), 0, 0, 100, m_atr14M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iATR(Symbol(), PERIOD_M5, 5), 0, 0, 100, m_atr5M5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iATR(Symbol(), PERIOD_M5, 14), 0, 0, 100, m_atr14M5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iATR(Symbol(), PERIOD_M15, 14), 0, 0, 100, m_atr14M15);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iATR(Symbol(), PERIOD_H1, 14), 0, 0, 100, m_atr14H1);
-   if(copied <= 0) return false;
-   
-   // RSI indicators
-   copied = CopyBuffer(iRSI(Symbol(), PERIOD_M1, 7, PRICE_CLOSE), 0, 0, 100, m_rsi7M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iRSI(Symbol(), PERIOD_M1, 14, PRICE_CLOSE), 0, 0, 100, m_rsi14M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iRSI(Symbol(), PERIOD_M5, 7, PRICE_CLOSE), 0, 0, 100, m_rsi7M5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iRSI(Symbol(), PERIOD_M5, 14, PRICE_CLOSE), 0, 0, 100, m_rsi14M5);
-   if(copied <= 0) return false;
-   
-   // EMA indicators for M1
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M1, 5, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema5M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M1, 10, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema10M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M1, 20, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema20M1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M1, 50, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema50M1);
-   if(copied <= 0) return false;
-   
-   // EMA indicators for M5
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M5, 5, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema5M5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M5, 10, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema10M5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M5, 20, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema20M5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M5, 50, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema50M5);
-   if(copied <= 0) return false;
-   
-   // EMA indicators for M15
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M15, 20, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema20M15);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M15, 50, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema50M15);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(iMA(Symbol(), PERIOD_M15, 200, 0, MODE_EMA, PRICE_CLOSE), 0, 0, 100, m_ema200M15);
-   if(copied <= 0) return false;
-   
-   // Bollinger Bands for M1
-   int bbHandle = iBands(Symbol(), PERIOD_M1, 20, 2.0, 0, PRICE_CLOSE);
-   copied = CopyBuffer(bbHandle, 0, 0, 100, m_bbandsMidM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(bbHandle, 1, 0, 100, m_bbandsUpperM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(bbHandle, 2, 0, 100, m_bbandsLowerM1);
-   if(copied <= 0) return false;
-   
-   // Bollinger Bands for M5
-   bbHandle = iBands(Symbol(), PERIOD_M5, 20, 2.0, 0, PRICE_CLOSE);
-   copied = CopyBuffer(bbHandle, 0, 0, 100, m_bbandsMidM5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(bbHandle, 1, 0, 100, m_bbandsUpperM5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(bbHandle, 2, 0, 100, m_bbandsLowerM5);
-   if(copied <= 0) return false;
-   
-   // Stochastic for M1
-   int stochHandle = iStochastic(Symbol(), PERIOD_M1, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-   copied = CopyBuffer(stochHandle, 0, 0, 100, m_stochMainM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(stochHandle, 1, 0, 100, m_stochSignalM1);
-   if(copied <= 0) return false;
-   
-   // Stochastic for M5
-   stochHandle = iStochastic(Symbol(), PERIOD_M5, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-   copied = CopyBuffer(stochHandle, 0, 0, 100, m_stochMainM5);
-   if(copied <= 0) return false;
-   
-   copied = CopyBuffer(stochHandle, 1, 0, 100, m_stochSignalM5);
-   if(copied <= 0) return false;
-   
-   // Tick volume
-   copied = CopyTickVolume(Symbol(), PERIOD_M1, 0, 100, m_tickVolumeM1);
-   if(copied <= 0) return false;
-   
-   copied = CopyTickVolume(Symbol(), PERIOD_M5, 0, 100, m_tickVolumeM5);
-   if(copied <= 0) return false;
-   
-   return true;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.hour * 60 + dt.min;
 }
 
 //+------------------------------------------------------------------+
-//| Update all market data                                           |
+//| Check if today is a weekend                                      |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::UpdateMarketData()
+bool IsWeekend()
 {
-   // Update current price data
-   m_bidPrice = SymbolInfoDouble(Symbol(), SYMBOL_BID);
-   m_askPrice = SymbolInfoDouble(Symbol(), SYMBOL_ASK);
-   m_lastPrice = SymbolInfoDouble(Symbol(), SYMBOL_LAST);
-   m_spreadPoints = (m_askPrice - m_bidPrice) / CSVUtils::GetPointValue();
-   
-   // Update indicators
-   if(!UpdateIndicators()) {
-      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Failed to update indicators");
-      return false;
-   }
-   
-   // Update volatility index
-   UpdateVolatilityIndex();
-   
-   // Update spread history
-   UpdateSpreadHistory();
-   
-   // Update tick volume analysis
-   UpdateTickVolumeAnalysis();
-   
-   return true;
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int day = dt.day_of_week;
+   return (day == 0 || day == 6); // 0 = Sunday, 6 = Saturday
 }
 
 //+------------------------------------------------------------------+
-//| Update volatility index                                          |
+//| Check if the market is open                                      |
 //+------------------------------------------------------------------+
-void CSVMarketAnalyzer::UpdateVolatilityIndex()
+bool IsMarketOpen(string symbol = NULL)
 {
-   // Calculate average ATR over the past 20 bars
-   double currentATR = m_atr14H1[0];
-   double sumATR = 0.0;
-   
-   for(int i = 1; i < 20; i++) {
-      sumATR += m_atr14H1[i];
-   }
-   
-   double avgATR = sumATR / 19.0; // Exclude current ATR
-   
-   if(avgATR > 0.0) {
-      m_volatilityIndex = currentATR / avgATR;
-   } else {
-      m_volatilityIndex = 1.0;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Update spread history                                            |
-//+------------------------------------------------------------------+
-void CSVMarketAnalyzer::UpdateSpreadHistory()
-{
-   // Update spread history array
-   if(m_spreadHistoryCount < 1000) {
-      m_spreadHistory[m_spreadHistoryCount++] = m_spreadPoints;
-   } else {
-      // Shift array and add new value
-      for(int i = 0; i < 999; i++) {
-         m_spreadHistory[i] = m_spreadHistory[i + 1];
-      }
-      m_spreadHistory[999] = m_spreadPoints;
-   }
-   
-   // Calculate average and max spread
-   double sumSpread = 0.0;
-   m_maxSpread = 0.0;
-   
-   for(int i = 0; i < m_spreadHistoryCount; i++) {
-      sumSpread += m_spreadHistory[i];
-      if(m_spreadHistory[i] > m_maxSpread) {
-         m_maxSpread = m_spreadHistory[i];
-      }
-   }
-   
-   m_averageSpread = sumSpread / m_spreadHistoryCount;
-}
-
-//+------------------------------------------------------------------+
-//| Update tick volume analysis                                      |
-//+------------------------------------------------------------------+
-void CSVMarketAnalyzer::UpdateTickVolumeAnalysis()
-{
-   // Calculate average tick volume for M1
-   double sumVolumeM1 = 0.0;
-   for(int i = 0; i < 20; i++) {
-      sumVolumeM1 += m_tickVolumeM1[i];
-   }
-   m_averageTickVolumeM1 = sumVolumeM1 / 20.0;
-   
-   // Calculate average tick volume for M5
-   double sumVolumeM5 = 0.0;
-   for(int i = 0; i < 20; i++) {
-      sumVolumeM5 += m_tickVolumeM5[i];
-   }
-   m_averageTickVolumeM5 = sumVolumeM5 / 20.0;
-}
-
-//+------------------------------------------------------------------+
-//| Get ATR value for specific timeframe and period                  |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetATR(ENUM_TIMEFRAMES timeframe, int period, int shift = 0)
-{
-   if(timeframe == PERIOD_M1) {
-      if(period == 5) return m_atr5M1[shift];
-      if(period == 14) return m_atr14M1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      if(period == 5) return m_atr5M5[shift];
-      if(period == 14) return m_atr14M5[shift];
-   } else if(timeframe == PERIOD_M15) {
-      if(period == 14) return m_atr14M15[shift];
-   } else if(timeframe == PERIOD_H1) {
-      if(period == 14) return m_atr14H1[shift];
-   }
-   
-   // Fallback: Calculate ATR directly if not stored
-   double atr[];
-   ArraySetAsSeries(atr, true);
-   int copied = CopyBuffer(iATR(Symbol(), timeframe, period), 0, shift, 1, atr);
-   if(copied > 0) return atr[0];
-   
-   return 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Get RSI value for specific timeframe and period                  |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetRSI(ENUM_TIMEFRAMES timeframe, int period, int shift = 0)
-{
-   if(timeframe == PERIOD_M1) {
-      if(period == 7) return m_rsi7M1[shift];
-      if(period == 14) return m_rsi14M1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      if(period == 7) return m_rsi7M5[shift];
-      if(period == 14) return m_rsi14M5[shift];
-   }
-   
-   // Fallback: Calculate RSI directly if not stored
-   double rsi[];
-   ArraySetAsSeries(rsi, true);
-   int copied = CopyBuffer(iRSI(Symbol(), timeframe, period, PRICE_CLOSE), 0, shift, 1, rsi);
-   if(copied > 0) return rsi[0];
-   
-   return 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Get EMA value for specific timeframe and period                  |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetEMA(ENUM_TIMEFRAMES timeframe, int period, int shift = 0)
-{
-   if(timeframe == PERIOD_M1) {
-      if(period == 5) return m_ema5M1[shift];
-      if(period == 10) return m_ema10M1[shift];
-      if(period == 20) return m_ema20M1[shift];
-      if(period == 50) return m_ema50M1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      if(period == 5) return m_ema5M5[shift];
-      if(period == 10) return m_ema10M5[shift];
-      if(period == 20) return m_ema20M5[shift];
-      if(period == 50) return m_ema50M5[shift];
-   } else if(timeframe == PERIOD_M15) {
-      if(period == 20) return m_ema20M15[shift];
-      if(period == 50) return m_ema50M15[shift];
-      if(period == 200) return m_ema200M15[shift];
-   }
-   
-   // Fallback: Calculate EMA directly if not stored
-   double ema[];
-   ArraySetAsSeries(ema, true);
-   int copied = CopyBuffer(iMA(Symbol(), timeframe, period, 0, MODE_EMA, PRICE_CLOSE), 0, shift, 1, ema);
-   if(copied > 0) return ema[0];
-   
-   return 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Get Bollinger Bands values                                       |
-//+------------------------------------------------------------------+
-void CSVMarketAnalyzer::GetBollingerBands(ENUM_TIMEFRAMES timeframe, int shift, double &upper, double &middle, double &lower)
-{
-   if(timeframe == PERIOD_M1) {
-      upper = m_bbandsUpperM1[shift];
-      middle = m_bbandsMidM1[shift];
-      lower = m_bbandsLowerM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      upper = m_bbandsUpperM5[shift];
-      middle = m_bbandsMidM5[shift];
-      lower = m_bbandsLowerM5[shift];
-   } else {
-      // Fallback: Calculate bands directly if not stored
-      double bbUpper[], bbMiddle[], bbLower[];
-      ArraySetAsSeries(bbUpper, true);
-      ArraySetAsSeries(bbMiddle, true);
-      ArraySetAsSeries(bbLower, true);
+   if(symbol == NULL)
+      symbol = Symbol();
       
-      int handle = iBands(Symbol(), timeframe, 20, 2.0, 0, PRICE_CLOSE);
-      int copied = CopyBuffer(handle, 0, shift, 1, bbMiddle);
-      if(copied > 0) middle = bbMiddle[0];
+   return !IsTradeSessionClosed(); // MT4 built-in function
+}
+
+//+------------------------------------------------------------------+
+//| Error handling utility functions                                 |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Get the error description based on error code                    |
+//+------------------------------------------------------------------+
+string GetErrorDescription(int errorCode)
+{
+   string errorDescription = "Unknown error";
+   
+   switch(errorCode)
+   {
+      case 0:   errorDescription = "No error"; break;
+      case 1:   errorDescription = "No error, but the result is unknown"; break;
+      case 2:   errorDescription = "Common error"; break;
+      case 3:   errorDescription = "Invalid trade parameters"; break;
+      case 4:   errorDescription = "Trade server is busy"; break;
+      case 5:   errorDescription = "Old version of the client terminal"; break;
+      case 6:   errorDescription = "No connection with trade server"; break;
+      case 7:   errorDescription = "Not enough rights"; break;
+      case 8:   errorDescription = "Too frequent requests"; break;
+      case 9:   errorDescription = "Malfunctional trade operation"; break;
+      case 64:  errorDescription = "Account disabled"; break;
+      case 65:  errorDescription = "Invalid account"; break;
+      case 128: errorDescription = "Trade timeout"; break;
+      case 129: errorDescription = "Invalid price"; break;
+      case 130: errorDescription = "Invalid stops"; break;
+      case 131: errorDescription = "Invalid trade volume"; break;
+      case 132: errorDescription = "Market is closed"; break;
+      case 133: errorDescription = "Trade is disabled"; break;
+      case 134: errorDescription = "Not enough money"; break;
+      case 135: errorDescription = "Price changed"; break;
+      case 136: errorDescription = "Off quotes"; break;
+      case 137: errorDescription = "Broker is busy"; break;
+      case 138: errorDescription = "Requote"; break;
+      case 139: errorDescription = "Order is locked"; break;
+      case 140: errorDescription = "Long positions only allowed"; break;
+      case 141: errorDescription = "Too many requests"; break;
+      case 145: errorDescription = "Modification denied because order too close to market"; break;
+      case 146: errorDescription = "Trade context is busy"; break;
+      case 147: errorDescription = "Expirations are denied by broker"; break;
+      case 148: errorDescription = "Amount of open and pending orders has reached the limit"; break;
+      case 149: errorDescription = "An attempt to open an order countervailing to existing one"; break;
+      case 150: errorDescription = "Hedge is prohibited"; break;
+      case 4000: errorDescription = "No error"; break;
+      case 4001: errorDescription = "Wrong function pointer"; break;
+      case 4002: errorDescription = "Array index is out of range"; break;
+      case 4003: errorDescription = "No memory for function call stack"; break;
+      case 4004: errorDescription = "Recursive stack overflow"; break;
+      case 4005: errorDescription = "Not enough stack for parameter"; break;
+      case 4006: errorDescription = "No memory for parameter string"; break;
+      case 4007: errorDescription = "No memory for temp string"; break;
+      case 4008: errorDescription = "Not initialized string"; break;
+      case 4009: errorDescription = "Not initialized string in array"; break;
+      case 4010: errorDescription = "No memory for array string"; break;
+      case 4011: errorDescription = "Too long string"; break;
+      case 4012: errorDescription = "Remainder from zero divide"; break;
+      case 4013: errorDescription = "Zero divide"; break;
+      case 4014: errorDescription = "Unknown command"; break;
+      case 4015: errorDescription = "Wrong jump"; break;
+      case 4016: errorDescription = "Not initialized array"; break;
+      case 4017: errorDescription = "DLL calls are not allowed"; break;
+      case 4018: errorDescription = "Cannot load library"; break;
+      case 4019: errorDescription = "Cannot call function"; break;
+      case 4020: errorDescription = "Expert function calls are not allowed"; break;
+      case 4021: errorDescription = "Not enough memory for string returned from function"; break;
+      case 4022: errorDescription = "System is busy"; break;
+      case 4050: errorDescription = "Invalid function parameters count"; break;
+      case 4051: errorDescription = "Invalid function parameter value"; break;
+      case 4052: errorDescription = "String function internal error"; break;
+      case 4053: errorDescription = "Some array error"; break;
+      case 4054: errorDescription = "Incorrect series array using"; break;
+      case 4055: errorDescription = "Custom indicator error"; break;
+      case 4056: errorDescription = "Arrays are incompatible"; break;
+      case 4057: errorDescription = "Global variables processing error"; break;
+      case 4058: errorDescription = "Global variable not found"; break;
+      case 4059: errorDescription = "Function is not allowed in testing mode"; break;
+      case 4060: errorDescription = "Function is not confirmed"; break;
+      case 4061: errorDescription = "Send mail error"; break;
+      case 4062: errorDescription = "String parameter expected"; break;
+      case 4063: errorDescription = "Integer parameter expected"; break;
+      case 4064: errorDescription = "Double parameter expected"; break;
+      case 4065: errorDescription = "Array as parameter expected"; break;
+      case 4066: errorDescription = "Requested history data in update state"; break;
+      case 4067: errorDescription = "Some error in trading function"; break;
+      case 4099: errorDescription = "End of file"; break;
+      case 4100: errorDescription = "Some file error"; break;
+      case 4101: errorDescription = "Wrong file name"; break;
+      case 4102: errorDescription = "Too many opened files"; break;
+      case 4103: errorDescription = "Cannot open file"; break;
+      case 4104: errorDescription = "Incompatible access to a file"; break;
+      case 4105: errorDescription = "No order selected"; break;
+      case 4106: errorDescription = "Unknown symbol"; break;
+      case 4107: errorDescription = "Invalid price parameter for trade function"; break;
+      case 4108: errorDescription = "Invalid ticket"; break;
+      case 4109: errorDescription = "Trade is not allowed in the expert properties"; break;
+      case 4110: errorDescription = "Longs are not allowed in the expert properties"; break;
+      case 4111: errorDescription = "Shorts are not allowed in the expert properties"; break;
+      case 4200: errorDescription = "Object already exists"; break;
+      case 4201: errorDescription = "Unknown object property"; break;
+      case 4202: errorDescription = "Object does not exist"; break;
+      case 4203: errorDescription = "Unknown object type"; break;
+      case 4204: errorDescription = "No object name"; break;
+      case 4205: errorDescription = "Object coordinates error"; break;
+      case 4206: errorDescription = "No specified subwindow"; break;
+      case 4207: errorDescription = "Some error in object function"; break;
+      default:  errorDescription = "Error " + IntegerToString(errorCode); break;
+   }
+   
+   return errorDescription;
+}
+
+//+------------------------------------------------------------------+
+//| Print an error message with details                              |
+//+------------------------------------------------------------------+
+void PrintError(string message, int errorCode)
+{
+   string errorDescription = GetErrorDescription(errorCode);
+   Print(message, " Error: ", errorCode, " (", errorDescription, ")");
+}
+
+//+------------------------------------------------------------------+
+//| Fixed time function implementations to replace deprecated ones    |
+//+------------------------------------------------------------------+
+
+// Modern MT4/MT5 compatible time functions
+int TimeYear(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.year;
+}
+
+int TimeMonth(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.mon;
+}
+
+int TimeDay(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.day;
+}
+
+int TimeHour(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.hour;
+}
+
+int TimeMinute(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.min;
+}
+
+int TimeSeconds(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.sec;
+}
+
+int TimeDayOfWeek(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.day_of_week;
+}
+
+//+------------------------------------------------------------------+
+//| String utilities                                                 |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Join array elements into a string with separator                 |
+//+------------------------------------------------------------------+
+string JoinStrings(string &array[], string separator)
+{
+   string result = "";
+   int size = ArraySize(array);
+   
+   for(int i = 0; i < size; i++)
+   {
+      if(i > 0)
+         result += separator;
       
-      copied = CopyBuffer(handle, 1, shift, 1, bbUpper);
-      if(copied > 0) upper = bbUpper[0];
-      
-      copied = CopyBuffer(handle, 2, shift, 1, bbLower);
-      if(copied > 0) lower = bbLower[0];
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Get Stochastic values                                            |
-//+------------------------------------------------------------------+
-void CSVMarketAnalyzer::GetStochastic(ENUM_TIMEFRAMES timeframe, int shift, double &main, double &signal)
-{
-   if(timeframe == PERIOD_M1) {
-      main = m_stochMainM1[shift];
-      signal = m_stochSignalM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      main = m_stochMainM5[shift];
-      signal = m_stochSignalM5[shift];
-   } else {
-      // Fallback: Calculate stochastic directly if not stored
-      double stochMain[], stochSignal[];
-      ArraySetAsSeries(stochMain, true);
-      ArraySetAsSeries(stochSignal, true);
-      
-      int handle = iStochastic(Symbol(), timeframe, 5, 3, 3, MODE_SMA, STO_LOWHIGH);
-      int copied = CopyBuffer(handle, 0, shift, 1, stochMain);
-      if(copied > 0) main = stochMain[0];
-      
-      copied = CopyBuffer(handle, 1, shift, 1, stochSignal);
-      if(copied > 0) signal = stochSignal[0];
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Get Close price for specific timeframe                           |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetClose(ENUM_TIMEFRAMES timeframe, int shift)
-{
-   if(timeframe == PERIOD_M1) {
-      return m_closeM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      return m_closeM5[shift];
-   } else if(timeframe == PERIOD_M15) {
-      return m_closeM15[shift];
-   } else if(timeframe == PERIOD_H1) {
-      return m_closeH1[shift];
+      result += array[i];
    }
    
-   // Fallback: Get close price directly if not stored
-   double close[];
-   ArraySetAsSeries(close, true);
-   int copied = CopyClose(Symbol(), timeframe, shift, 1, close);
-   if(copied > 0) return close[0];
-   
-   return 0.0;
+   return result;
 }
 
 //+------------------------------------------------------------------+
-//| Get Open price for specific timeframe                            |
+//| Split a string into an array using a separator                   |
 //+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetOpen(ENUM_TIMEFRAMES timeframe, int shift)
+int SplitString(string str, string separator, string &array[])
 {
-   if(timeframe == PERIOD_M1) {
-      return m_openM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      return m_openM5[shift];
+   int count = 0;
+   int pos = 0;
+   int sepLen = StringLen(separator);
+   int len = StringLen(str);
+   
+   // Count the number of separators
+   while((pos = StringFind(str, separator, pos)) != -1)
+   {
+      count++;
+      pos += sepLen;
    }
    
-   // Fallback: Get open price directly if not stored
-   double open[];
-   ArraySetAsSeries(open, true);
-   int copied = CopyOpen(Symbol(), timeframe, shift, 1, open);
-   if(copied > 0) return open[0];
+   // Resize the array to accommodate the parts
+   ArrayResize(array, count + 1);
    
-   return 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Get High price for specific timeframe                            |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetHigh(ENUM_TIMEFRAMES timeframe, int shift)
-{
-   if(timeframe == PERIOD_M1) {
-      return m_highM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      return m_highM5[shift];
-   } else if(timeframe == PERIOD_M15) {
-      return m_highM15[shift];
-   } else if(timeframe == PERIOD_H1) {
-      return m_highH1[shift];
+   // Split the string
+   pos = 0;
+   int prevPos = 0;
+   int idx = 0;
+   
+   while((pos = StringFind(str, separator, prevPos)) != -1)
+   {
+      array[idx++] = StringSubstr(str, prevPos, pos - prevPos);
+      prevPos = pos + sepLen;
    }
    
-   // Fallback: Get high price directly if not stored
-   double high[];
-   ArraySetAsSeries(high, true);
-   int copied = CopyHigh(Symbol(), timeframe, shift, 1, high);
-   if(copied > 0) return high[0];
+   // Add the last part
+   array[idx] = StringSubstr(str, prevPos, len - prevPos);
    
-   return 0.0;
+   return count + 1;
 }
 
 //+------------------------------------------------------------------+
-//| Get Low price for specific timeframe                             |
+//| Mathematical utilities                                           |
 //+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetLow(ENUM_TIMEFRAMES timeframe, int shift)
+
+//+------------------------------------------------------------------+
+//| Round to the nearest specified precision                         |
+//+------------------------------------------------------------------+
+double RoundToDigits(double value, int digits)
 {
-   if(timeframe == PERIOD_M1) {
-      return m_lowM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      return m_lowM5[shift];
-   } else if(timeframe == PERIOD_M15) {
-      return m_lowM15[shift];
-   } else if(timeframe == PERIOD_H1) {
-      return m_lowH1[shift];
-   }
-   
-   // Fallback: Get low price directly if not stored
-   double low[];
-   ArraySetAsSeries(low, true);
-   int copied = CopyLow(Symbol(), timeframe, shift, 1, low);
-   if(copied > 0) return low[0];
-   
-   return 0.0;
+   double factor = MathPow(10.0, digits);
+   return MathRound(value * factor) / factor;
 }
 
 //+------------------------------------------------------------------+
-//| Check if market is overbought                                    |
+//| Normalize price value based on symbol digits                     |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsOverbought(ENUM_TIMEFRAMES timeframe, int shift = 0)
+double NormalizePrice(string symbol, double price)
 {
-   double rsi = GetRSI(timeframe, 14, shift);
-   double stochMain, stochSignal;
-   GetStochastic(timeframe, shift, stochMain, stochSignal);
-   
-   // RSI over 70 and Stochastic main line over 80
-   return (rsi > 70.0 && stochMain > 80.0);
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   return NormalizeDouble(price, digits);
 }
 
 //+------------------------------------------------------------------+
-//| Check if market is oversold                                      |
+//| Convert lot size to contract size                                |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsOversold(ENUM_TIMEFRAMES timeframe, int shift = 0)
+double LotsToContractSize(string symbol, double lots)
 {
-   double rsi = GetRSI(timeframe, 14, shift);
-   double stochMain, stochSignal;
-   GetStochastic(timeframe, shift, stochMain, stochSignal);
-   
-   // RSI under 30 and Stochastic main line under 20
-   return (rsi < 30.0 && stochMain < 20.0);
+   double contractSize = MarketInfo(symbol, MODE_LOTSIZE);
+   return lots * contractSize;
 }
 
 //+------------------------------------------------------------------+
-//| Check if market is in bullish trend                              |
+//| Calculate position value                                         |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsBullishTrend(ENUM_TIMEFRAMES timeframe, int shift = 0)
+double CalculatePositionValue(string symbol, double lots, double price)
 {
-   double close = GetClose(timeframe, shift);
-   double ema20 = GetEMA(timeframe, 20, shift);
-   double ema50 = GetEMA(timeframe, 50, shift);
+   double contractSize = MarketInfo(symbol, MODE_LOTSIZE);
+   double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
+   double tickSize = MarketInfo(symbol, MODE_TICKSIZE);
    
-   // Current price above EMAs and EMA20 above EMA50
-   return (close > ema20 && close > ema50 && ema20 > ema50);
-}
-
-//+------------------------------------------------------------------+
-//| Check if market is in bearish trend                              |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsBearishTrend(ENUM_TIMEFRAMES timeframe, int shift = 0)
-{
-   double close = GetClose(timeframe, shift);
-   double ema20 = GetEMA(timeframe, 20, shift);
-   double ema50 = GetEMA(timeframe, 50, shift);
-   
-   // Current price below EMAs and EMA20 below EMA50
-   return (close < ema20 && close < ema50 && ema20 < ema50);
-}
-
-//+------------------------------------------------------------------+
-//| Check if market is in a range                                    |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsRangebound(ENUM_TIMEFRAMES timeframe, int barsToCheck, int shift = 0)
-{
-   double highestHigh = GetHigh(timeframe, shift);
-   double lowestLow = GetLow(timeframe, shift);
-   
-   // Find highest high and lowest low
-   for(int i = shift + 1; i < shift + barsToCheck; i++) {
-      double high = GetHigh(timeframe, i);
-      double low = GetLow(timeframe, i);
-      
-      if(high > highestHigh) highestHigh = high;
-      if(low < lowestLow) lowestLow = low;
-   }
-   
-   // Calculate range as percentage of average price
-   double rangeSize = highestHigh - lowestLow;
-   double avgPrice = (highestHigh + lowestLow) / 2.0;
-   double rangePercent = (rangeSize / avgPrice) * 100.0;
-   
-   // Check if ema20 is relatively flat
-   double ema20Slope = MathAbs(GetEMA(timeframe, 20, shift) - GetEMA(timeframe, 20, shift + 5)) / GetEMA(timeframe, 20, shift + 5);
-   
-   // Range is considered if the range is less than 0.5% of the average price
-   // and the EMA slope is less than 0.1%
-   return (rangePercent < 0.5 && ema20Slope < 0.001);
-}
-
-//+------------------------------------------------------------------+
-//| Get tick volume for specific timeframe                           |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetTickVolume(ENUM_TIMEFRAMES timeframe, int shift)
-{
-   if(timeframe == PERIOD_M1) {
-      return m_tickVolumeM1[shift];
-   } else if(timeframe == PERIOD_M5) {
-      return m_tickVolumeM5[shift];
-   }
-   
-   // Fallback: Get tick volume directly if not stored
-   long tickVolume[];
-   ArraySetAsSeries(tickVolume, true);
-   int copied = CopyTickVolume(Symbol(), timeframe, shift, 1, tickVolume);
-   if(copied > 0) return (double)tickVolume[0];
-   
-   return 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Get average tick volume for specific timeframe                   |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetAverageTickVolume(ENUM_TIMEFRAMES timeframe)
-{
-   if(timeframe == PERIOD_M1) {
-      return m_averageTickVolumeM1;
-   } else if(timeframe == PERIOD_M5) {
-      return m_averageTickVolumeM5;
-   }
-   
-   return 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Check if there's a volume spike                                  |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsVolumeSpike(ENUM_TIMEFRAMES timeframe, int shift)
-{
-   double tickVolume = GetTickVolume(timeframe, shift);
-   double avgVolume = GetAverageTickVolume(timeframe);
-   
-   // Volume spike is considered if current volume is > 2x average
-   return (tickVolume > avgVolume * 2.0);
-}
-
-//+------------------------------------------------------------------+
-//| Check if bar is a pin bar                                        |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsPinBar(ENUM_TIMEFRAMES timeframe, int shift)
-{
-   double open = GetOpen(timeframe, shift);
-   double close = GetClose(timeframe, shift);
-   double high = GetHigh(timeframe, shift);
-   double low = GetLow(timeframe, shift);
-   
-   double body = MathAbs(open - close);
-   double upperWick = high - MathMax(open, close);
-   double lowerWick = MathMin(open, close) - low;
-   double totalRange = high - low;
-   
-   // Pin bar criteria: small body, one long wick, other wick small/non-existent
-   if(totalRange == 0.0) return false; // Avoid division by zero
-   
-   double bodyPercent = body / totalRange;
-   double upperWickPercent = upperWick / totalRange;
-   double lowerWickPercent = lowerWick / totalRange;
-   
-   // Bullish pin: small body, long lower wick, small upper wick
-   bool bullishPin = (bodyPercent < 0.3 && lowerWickPercent > 0.6 && upperWickPercent < 0.2);
-   
-   // Bearish pin: small body, long upper wick, small lower wick
-   bool bearishPin = (bodyPercent < 0.3 && upperWickPercent > 0.6 && lowerWickPercent < 0.2);
-   
-   return (bullishPin || bearishPin);
-}
-
-//+------------------------------------------------------------------+
-//| Check if bar forms an engulfing pattern                          |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsEngulfing(ENUM_TIMEFRAMES timeframe, bool bullish, int shift)
-{
-   double open = GetOpen(timeframe, shift);
-   double close = GetClose(timeframe, shift);
-   double prevOpen = GetOpen(timeframe, shift + 1);
-   double prevClose = GetClose(timeframe, shift + 1);
-   
-   if(bullish) {
-      // Bullish engulfing: current bar bullish, previous bar bearish,
-      // current body completely engulfs previous body
-      return (close > open && prevClose < prevOpen && 
-              close > prevOpen && open < prevClose);
-   } else {
-      // Bearish engulfing: current bar bearish, previous bar bullish,
-      // current body completely engulfs previous body
-      return (close < open && prevClose > prevOpen && 
-              close < prevClose && open > prevOpen);
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Check if bar is a doji                                           |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsDoji(ENUM_TIMEFRAMES timeframe, int shift)
-{
-   double open = GetOpen(timeframe, shift);
-   double close = GetClose(timeframe, shift);
-   double high = GetHigh(timeframe, shift);
-   double low = GetLow(timeframe, shift);
-   
-   double body = MathAbs(open - close);
-   double totalRange = high - low;
-   
-   if(totalRange == 0.0) return false; // Avoid division by zero
-   
-   // Doji criteria: body size less than 5% of the total range
-   return (body / totalRange < 0.05);
+   return lots * contractSize * price * (tickValue / tickSize);
 }
