@@ -1,89 +1,157 @@
 //+------------------------------------------------------------------+
-//|                                           SVMarketAnalyzer.mqh    |
+//|                                            SVMarketAnalyzer.mqh |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "ScalpingVortex"
+#property copyright "Copyright 2025, Scalping Vortex"
 #property link      "https://github.com/H3NST7/ScalpingVortex"
 #property version   "1.00"
-#property strict
 
-// Include files
-#include "SVUtils.mqh"
+#include <Trade\SymbolInfo.mqh>
+#include <Arrays\ArrayObj.mqh>
+#include <Indicators\Trend.mqh>
+#include <Indicators\Oscilators.mqh>
+#include <Indicators\Volumes.mqh>
 
 //+------------------------------------------------------------------+
-//| Market analysis class for technical indicators and volume         |
+//| Structure to hold signal information                              |
+//+------------------------------------------------------------------+
+struct SVSignalInfo
+{
+   int               signal;              // Signal type: 1 = Buy, -1 = Sell, 0 = No signal
+   double            entryPrice;          // Entry price
+   double            stopLoss;            // Stop loss price
+   double            takeProfit;          // Take profit price
+   double            riskRewardRatio;     // Risk/reward ratio
+   double            signalStrength;      // Signal strength (0-100%)
+   string            signalSource;        // Source indicator that generated the signal
+   string            timeframe;           // Timeframe where the signal was generated
+   datetime          signalTime;          // Time when the signal was generated
+   
+   void Init()
+   {
+      signal = 0;
+      entryPrice = 0.0;
+      stopLoss = 0.0;
+      takeProfit = 0.0;
+      riskRewardRatio = 0.0;
+      signalStrength = 0.0;
+      signalSource = "";
+      timeframe = "";
+      signalTime = 0;
+   }
+};
+
+//+------------------------------------------------------------------+
+//| CSVMarketAnalyzer - Handles market analysis and signal generation |
 //+------------------------------------------------------------------+
 class CSVMarketAnalyzer
 {
 private:
-   // Indicator buffer arrays
-   double            m_maFast[];       // Fast moving average values
-   double            m_maSlow[];       // Slow moving average values
-   double            m_atr[];          // Average True Range values
-   double            m_rsi[];          // RSI values
-   double            m_bollingerUpper[]; // Bollinger upper band
-   double            m_bollingerMiddle[]; // Bollinger middle band
-   double            m_bollingerLower[]; // Bollinger lower band
+   // Symbol and market info
+   string            m_symbol;            // Symbol to analyze
+   CSymbolInfo      *m_symbolInfo;        // Symbol information
    
-   // Indicator handles
-   int               m_maFastHandle;
-   int               m_maSlowHandle;
-   int               m_atrHandle;
-   int               m_rsiHandle;
-   int               m_bollingerHandle;
+   // Indicators
+   int               m_maFastHandle;      // Handle for fast MA
+   int               m_maSlowHandle;      // Handle for slow MA
+   int               m_atrHandle;         // Handle for ATR
+   int               m_rsiHandle;         // Handle for RSI
+   int               m_macdHandle;        // Handle for MACD
    
-   // Indicator settings
-   int               m_maFastPeriod;
-   int               m_maSlowPeriod;
-   int               m_atrPeriod;
-   int               m_rsiPeriod;
-   int               m_bollingerPeriod;
-   double            m_bollingerDeviation;
+   // Indicator parameters
+   int               m_fastMAPeriod;      // Fast MA period
+   int               m_slowMAPeriod;      // Slow MA period
+   int               m_atrPeriod;         // ATR period
+   int               m_rsiPeriod;         // RSI period
+   int               m_macdFastPeriod;    // MACD fast period
+   int               m_macdSlowPeriod;    // MACD slow period
+   int               m_macdSignalPeriod;  // MACD signal period
    
-   // State tracking
-   bool              m_isInitialized;
-   datetime          m_lastUpdateTime;
+   // Market state
+   double            m_currentATR;        // Current ATR value
+   double            m_atrMultiplier;     // ATR multiplier for SL/TP calculation
    
-   // Volume analysis
-   long              m_volumeBuffer[];
-   double            m_volumeMA[];
-   int               m_volumeWindow;
+   // Signal generation
+   double            m_minSignalStrength; // Minimum signal strength to generate a signal
+   
+   // Market session control
+   bool              m_useSessionFiltering; // Flag to enable session filtering
+   bool              m_allowTradingInAsianSession;     // Allow trading in Asian session
+   bool              m_allowTradingInEuropeanSession;  // Allow trading in European session
+   bool              m_allowTradingInUSSession;        // Allow trading in US session
+   
+   // Volatility analysis
+   bool              m_checkVolatility;   // Flag to enable volatility checking
+   double            m_minVolatility;     // Minimum volatility required
+   double            m_maxVolatility;     // Maximum volatility allowed
+   
+   // Private methods
+   bool              IsWithinTradingHours();
+   bool              IsVolatilityAcceptable();
+   double            CalculateSignalStrength(int signalType);
    
 public:
                      CSVMarketAnalyzer();
-                     ~CSVMarketAnalyzer();
+                    ~CSVMarketAnalyzer();
    
-   // Initialization and update methods
-   bool              Initialize(int maFastPeriod, int maSlowPeriod, int atrPeriod, int rsiPeriod, 
-                              int bollingerPeriod, double bollingerDeviation, int volumeWindow);
-   bool              Update(string symbol, ENUM_TIMEFRAMES timeframe);
+   // Initialization and update
+   bool              Initialize(string symbol, 
+                              int fastMA = 20, 
+                              int slowMA = 50, 
+                              int atrPeriod = 14, 
+                              int rsiPeriod = 14,
+                              int macdFast = 12,
+                              int macdSlow = 26,
+                              int macdSignal = 9);
+   bool              Update();
    
-   // Trend analysis methods
-   bool              IsTrendUp(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsTrendDown(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsTrendChanging(string symbol, ENUM_TIMEFRAMES timeframe);
-   double            GetTrendStrength(string symbol, ENUM_TIMEFRAMES timeframe);
+   // Signal generation
+   int               GetSignal(SVSignalInfo &signalInfo);
    
-   // Volatility and momentum methods
-   double            GetAverageTrueRange(string symbol, ENUM_TIMEFRAMES timeframe);
-   double            GetRSI(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsOverbought(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsOversold(string symbol, ENUM_TIMEFRAMES timeframe);
+   // Technical analysis methods
+   double            GetMovingAverage(int maPeriod, int shift = 0);
+   double            GetAverageTrueRange(int shift = 0);
+   double            GetRSI(int shift = 0);
+   double            GetMACD(int macdLine, int shift = 0);
    
-   // Price pattern methods
-   bool              IsBollingerSqueeze(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsBollingerBreakoutUp(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsBollingerBreakoutDown(string symbol, ENUM_TIMEFRAMES timeframe);
+   // Market state methods
+   bool              IsTrendUp();
+   bool              IsTrendDown();
+   bool              IsRangebound();
+   bool              IsVolatilityIncreasing();
+   bool              IsVolatilityDecreasing();
+   double            GetMarketVolatility();
    
-   // Volume analysis methods
-   bool              AnalyzeVolume(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsVolumeIncreasing(string symbol, ENUM_TIMEFRAMES timeframe);
-   bool              IsVolumeHigherThanAverage(string symbol, ENUM_TIMEFRAMES timeframe, double factor = 1.2);
-   double            GetVolumeStrength(string symbol, ENUM_TIMEFRAMES timeframe);
-   
-private:
-   // Helper methods
-   bool              UpdateIndicators(string symbol, ENUM_TIMEFRAMES timeframe);
-   double            CalculateVolumeMA();
+   // Configuration methods
+   void              SetATRMultiplier(double multiplier) { m_atrMultiplier = multiplier; }
+   void              SetMinSignalStrength(double strength) { m_minSignalStrength = strength; }
+   void              EnableSessionFiltering(bool enable) { m_useSessionFiltering = enable; }
+   void              SetTradingSessions(bool asian, bool european, bool us)
+                    {
+                       m_allowTradingInAsianSession = asian;
+                       m_allowTradingInEuropeanSession = european;
+                       m_allowTradingInUSSession = us;
+                    }
+   void              EnableVolatilityCheck(bool enable) { m_checkVolatility = enable; }
+   void              SetVolatilityRange(double minVol, double maxVol)
+                    {
+                       m_minVolatility = minVol;
+                       m_maxVolatility = maxVol;
+                    }
+                    
+   // Indicator parameter setters
+   void              SetMAPeriods(int fastPeriod, int slowPeriod)
+                    {
+                       m_fastMAPeriod = fastPeriod;
+                       m_slowMAPeriod = slowPeriod;
+                    }
+   void              SetRSIPeriod(int period) { m_rsiPeriod = period; }
+   void              SetMACDParameters(int fastPeriod, int slowPeriod, int signalPeriod)
+                    {
+                       m_macdFastPeriod = fastPeriod;
+                       m_macdSlowPeriod = slowPeriod;
+                       m_macdSignalPeriod = signalPeriod;
+                    }
 };
 
 //+------------------------------------------------------------------+
@@ -91,25 +159,43 @@ private:
 //+------------------------------------------------------------------+
 CSVMarketAnalyzer::CSVMarketAnalyzer()
 {
-   // Default indicator settings
-   m_maFastPeriod = 20;
-   m_maSlowPeriod = 50;
-   m_atrPeriod = 14;
-   m_rsiPeriod = 14;
-   m_bollingerPeriod = 20;
-   m_bollingerDeviation = 2.0;
-   m_volumeWindow = 10;
+   // Initialize default values
+   m_symbol = Symbol();
+   m_symbolInfo = new CSymbolInfo();
    
-   // Initialize state variables
-   m_isInitialized = false;
-   m_lastUpdateTime = 0;
-   
-   // Set handles to invalid state
+   // Initialize indicator handles
    m_maFastHandle = INVALID_HANDLE;
    m_maSlowHandle = INVALID_HANDLE;
    m_atrHandle = INVALID_HANDLE;
    m_rsiHandle = INVALID_HANDLE;
-   m_bollingerHandle = INVALID_HANDLE;
+   m_macdHandle = INVALID_HANDLE;
+   
+   // Set default indicator parameters
+   m_fastMAPeriod = 20;
+   m_slowMAPeriod = 50;
+   m_atrPeriod = 14;
+   m_rsiPeriod = 14;
+   m_macdFastPeriod = 12;
+   m_macdSlowPeriod = 26;
+   m_macdSignalPeriod = 9;
+   
+   // Set default market state
+   m_currentATR = 0.0;
+   m_atrMultiplier = 1.5;
+   
+   // Set default signal generation parameters
+   m_minSignalStrength = 60.0;
+   
+   // Set default session filtering
+   m_useSessionFiltering = false;
+   m_allowTradingInAsianSession = true;
+   m_allowTradingInEuropeanSession = true;
+   m_allowTradingInUSSession = true;
+   
+   // Set default volatility settings
+   m_checkVolatility = false;
+   m_minVolatility = 0.0;
+   m_maxVolatility = 100.0;
 }
 
 //+------------------------------------------------------------------+
@@ -117,144 +203,76 @@ CSVMarketAnalyzer::CSVMarketAnalyzer()
 //+------------------------------------------------------------------+
 CSVMarketAnalyzer::~CSVMarketAnalyzer()
 {
-   // Clean up indicator handles and arrays
-   ArrayFree(m_maFast);
-   ArrayFree(m_maSlow);
-   ArrayFree(m_atr);
-   ArrayFree(m_rsi);
-   ArrayFree(m_bollingerUpper);
-   ArrayFree(m_bollingerMiddle);
-   ArrayFree(m_bollingerLower);
-   ArrayFree(m_volumeBuffer);
-   ArrayFree(m_volumeMA);
+   // Release indicator handles
+   if(m_maFastHandle != INVALID_HANDLE)
+      IndicatorRelease(m_maFastHandle);
+      
+   if(m_maSlowHandle != INVALID_HANDLE)
+      IndicatorRelease(m_maSlowHandle);
+      
+   if(m_atrHandle != INVALID_HANDLE)
+      IndicatorRelease(m_atrHandle);
+      
+   if(m_rsiHandle != INVALID_HANDLE)
+      IndicatorRelease(m_rsiHandle);
+      
+   if(m_macdHandle != INVALID_HANDLE)
+      IndicatorRelease(m_macdHandle);
+      
+   // Delete objects
+   if(m_symbolInfo != NULL)
+   {
+      delete m_symbolInfo;
+      m_symbolInfo = NULL;
+   }
 }
 
 //+------------------------------------------------------------------+
 //| Initialize the market analyzer                                   |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::Initialize(int maFastPeriod, int maSlowPeriod, int atrPeriod, int rsiPeriod, 
-                                int bollingerPeriod, double bollingerDeviation, int volumeWindow)
+bool CSVMarketAnalyzer::Initialize(string symbol, 
+                                int fastMA = 20, 
+                                int slowMA = 50, 
+                                int atrPeriod = 14, 
+                                int rsiPeriod = 14,
+                                int macdFast = 12,
+                                int macdSlow = 26,
+                                int macdSignal = 9)
 {
+   // Set the symbol
+   m_symbol = symbol;
+   
+   // Initialize symbol info
+   if(!m_symbolInfo.Name(symbol))
+   {
+      Print("Failed to set symbol name: ", symbol);
+      return false;
+   }
+   
    // Set indicator parameters
-   m_maFastPeriod = maFastPeriod;
-   m_maSlowPeriod = maSlowPeriod;
+   m_fastMAPeriod = fastMA;
+   m_slowMAPeriod = slowMA;
    m_atrPeriod = atrPeriod;
    m_rsiPeriod = rsiPeriod;
-   m_bollingerPeriod = bollingerPeriod;
-   m_bollingerDeviation = bollingerDeviation;
-   m_volumeWindow = volumeWindow;
+   m_macdFastPeriod = macdFast;
+   m_macdSlowPeriod = macdSlow;
+   m_macdSignalPeriod = macdSignal;
    
-   // Allocate arrays with buffer sizes
-   int bufferSize = MathMax(m_maFastPeriod, MathMax(m_maSlowPeriod, MathMax(m_atrPeriod, MathMax(m_rsiPeriod, m_bollingerPeriod)))) * 2;
+   // Initialize indicators
+   m_maFastHandle = iMA(symbol, PERIOD_CURRENT, m_fastMAPeriod, 0, MODE_SMA, PRICE_CLOSE);
+   m_maSlowHandle = iMA(symbol, PERIOD_CURRENT, m_slowMAPeriod, 0, MODE_SMA, PRICE_CLOSE);
+   m_atrHandle = iATR(symbol, PERIOD_CURRENT, m_atrPeriod);
+   m_rsiHandle = iRSI(symbol, PERIOD_CURRENT, m_rsiPeriod, PRICE_CLOSE);
+   m_macdHandle = iMACD(symbol, PERIOD_CURRENT, m_macdFastPeriod, m_macdSlowPeriod, m_macdSignalPeriod, PRICE_CLOSE);
    
-   ArrayResize(m_maFast, bufferSize);
-   ArrayResize(m_maSlow, bufferSize);
-   ArrayResize(m_atr, bufferSize);
-   ArrayResize(m_rsi, bufferSize);
-   ArrayResize(m_bollingerUpper, bufferSize);
-   ArrayResize(m_bollingerMiddle, bufferSize);
-   ArrayResize(m_bollingerLower, bufferSize);
-   
-   // Allocate volume analysis arrays
-   ArrayResize(m_volumeBuffer, m_volumeWindow * 2);
-   ArrayResize(m_volumeMA, m_volumeWindow);
-   
-   // Set initialization flag
-   m_isInitialized = true;
-   m_lastUpdateTime = TimeCurrent();
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Update all analysis data                                         |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::Update(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   // Update indicators
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Update volume data
-   if(!AnalyzeVolume(symbol, timeframe))
-      return false;
-      
-   // Update timestamp
-   m_lastUpdateTime = TimeCurrent();
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Update all technical indicators                                  |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::UpdateIndicators(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   // Calculate Moving Averages
-   int copied = CopyBuffer(iMA(symbol, timeframe, m_maFastPeriod, 0, MODE_SMA, PRICE_CLOSE), 0, 0, m_maFastPeriod, m_maFast);
-   if(copied <= 0)
+   // Check if all indicators were created successfully
+   if(m_maFastHandle == INVALID_HANDLE || 
+      m_maSlowHandle == INVALID_HANDLE || 
+      m_atrHandle == INVALID_HANDLE ||
+      m_rsiHandle == INVALID_HANDLE ||
+      m_macdHandle == INVALID_HANDLE)
    {
-      int errorCode = GetLastError();
-      Print("Failed to copy fast MA data: ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   copied = CopyBuffer(iMA(symbol, timeframe, m_maSlowPeriod, 0, MODE_SMA, PRICE_CLOSE), 0, 0, m_maSlowPeriod, m_maSlow);
-   if(copied <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Failed to copy slow MA data: ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   // Calculate ATR
-   copied = CopyBuffer(iATR(symbol, timeframe, m_atrPeriod), 0, 0, m_atrPeriod, m_atr);
-   if(copied <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Failed to copy ATR data: ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   // Calculate RSI
-   copied = CopyBuffer(iRSI(symbol, timeframe, m_rsiPeriod, PRICE_CLOSE), 0, 0, m_rsiPeriod, m_rsi);
-   if(copied <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Failed to copy RSI data: ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   // Calculate Bollinger Bands
-   int bandsHandle = iBands(symbol, timeframe, m_bollingerPeriod, m_bollingerDeviation, 0, PRICE_CLOSE);
-   
-   // Upper band (0)
-   copied = CopyBuffer(bandsHandle, 0, 0, m_bollingerPeriod, m_bollingerUpper);
-   if(copied <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Failed to copy Bollinger upper band: ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   // Middle band (1)
-   copied = CopyBuffer(bandsHandle, 1, 0, m_bollingerPeriod, m_bollingerMiddle);
-   if(copied <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Failed to copy Bollinger middle band: ", errorCode, " - ", GetErrorDescription(errorCode));
-      return false;
-   }
-   
-   // Lower band (2)
-   copied = CopyBuffer(bandsHandle, 2, 0, m_bollingerPeriod, m_bollingerLower);
-   if(copied <= 0)
-   {
-      int errorCode = GetLastError();
-      Print("Failed to copy Bollinger lower band: ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Failed to create indicator handles");
       return false;
    }
    
@@ -262,272 +280,398 @@ bool CSVMarketAnalyzer::UpdateIndicators(string symbol, ENUM_TIMEFRAMES timefram
 }
 
 //+------------------------------------------------------------------+
-//| Check if trend is up                                             |
+//| Update market state                                              |
 //+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsTrendUp(string symbol, ENUM_TIMEFRAMES timeframe)
+bool CSVMarketAnalyzer::Update()
 {
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Check if fast MA is above slow MA
-   return m_maFast[0] > m_maSlow[0];
-}
-
-//+------------------------------------------------------------------+
-//| Check if trend is down                                           |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsTrendDown(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Check if fast MA is below slow MA
-   return m_maFast[0] < m_maSlow[0];
-}
-
-//+------------------------------------------------------------------+
-//| Check if trend is changing direction                             |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsTrendChanging(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Check for crossover
-   return (m_maFast[1] <= m_maSlow[1] && m_maFast[0] > m_maSlow[0]) || // Bullish crossover
-          (m_maFast[1] >= m_maSlow[1] && m_maFast[0] < m_maSlow[0]);   // Bearish crossover
-}
-
-//+------------------------------------------------------------------+
-//| Calculate trend strength (percentage difference between MAs)     |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetTrendStrength(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return 0.0;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return 0.0;
-      
-   // Calculate percentage difference between fast and slow MAs
-   if(m_maSlow[0] == 0)
-      return 0.0;
-      
-   return MathAbs((m_maFast[0] - m_maSlow[0]) / m_maSlow[0] * 100.0);
-}
-
-//+------------------------------------------------------------------+
-//| Get Average True Range value                                     |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetAverageTrueRange(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return 0.0;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return 0.0;
-      
-   return m_atr[0];
-}
-
-//+------------------------------------------------------------------+
-//| Get RSI value                                                    |
-//+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetRSI(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return 0.0;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return 0.0;
-      
-   return m_rsi[0];
-}
-
-//+------------------------------------------------------------------+
-//| Check if market is overbought (RSI > 70)                         |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsOverbought(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   return m_rsi[0] > 70.0;
-}
-
-//+------------------------------------------------------------------+
-//| Check if market is oversold (RSI < 30)                           |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsOversold(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   return m_rsi[0] < 30.0;
-}
-
-//+------------------------------------------------------------------+
-//| Check for Bollinger Bands squeeze (volatility contraction)       |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsBollingerSqueeze(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Calculate the band width as percentage of price
-   double bandWidth = (m_bollingerUpper[0] - m_bollingerLower[0]) / m_bollingerMiddle[0] * 100.0;
-   double prevBandWidth = (m_bollingerUpper[1] - m_bollingerLower[1]) / m_bollingerMiddle[1] * 100.0;
-   
-   // A squeeze is occurring when the band width is narrowing
-   return bandWidth < prevBandWidth && bandWidth < 3.0; // 3% threshold can be adjusted
-}
-
-//+------------------------------------------------------------------+
-//| Check for upward Bollinger Bands breakout                        |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsBollingerBreakoutUp(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Get current price
-   double close[];
-   if(CopyClose(symbol, timeframe, 0, 2, close) <= 0)
-      return false;
-      
-   // Check for breakout: previous close within bands, current close above upper band
-   return close[1] < m_bollingerUpper[1] && close[0] > m_bollingerUpper[0];
-}
-
-//+------------------------------------------------------------------+
-//| Check for downward Bollinger Bands breakout                      |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsBollingerBreakoutDown(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   if(!UpdateIndicators(symbol, timeframe))
-      return false;
-      
-   // Get current price
-   double close[];
-   if(CopyClose(symbol, timeframe, 0, 2, close) <= 0)
-      return false;
-      
-   // Check for breakout: previous close within bands, current close below lower band
-   return close[1] > m_bollingerLower[1] && close[0] < m_bollingerLower[0];
-}
-
-//+------------------------------------------------------------------+
-//| Analyze volume                                                   |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::AnalyzeVolume(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!m_isInitialized)
-      return false;
-      
-   // Get tick volumes
-   ArraySetAsSeries(m_volumeBuffer, true);
-   
-   // Fixed CopyTickVolume call with proper parameter types
-   int copied = CopyTickVolume(symbol, timeframe, 0, m_volumeWindow * 2, m_volumeBuffer);
-   
-   if(copied <= 0)
+   // Refresh symbol info
+   if(!m_symbolInfo.RefreshRates())
    {
-      int errorCode = GetLastError();
-      Print("Failed to copy volume data: ", errorCode, " - ", GetErrorDescription(errorCode));
+      Print("Failed to refresh rates for symbol: ", m_symbol);
       return false;
    }
    
-   // Calculate volume moving average
-   CalculateVolumeMA();
+   // Update current ATR
+   double atrBuffer[];
+   if(CopyBuffer(m_atrHandle, 0, 0, 1, atrBuffer) <= 0)
+   {
+      Print("Failed to copy ATR buffer");
+      return false;
+   }
+   
+   m_currentATR = atrBuffer[0];
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Calculate volume moving average                                  |
+//| Get signal                                                       |
 //+------------------------------------------------------------------+
-double CSVMarketAnalyzer::CalculateVolumeMA()
+int CSVMarketAnalyzer::GetSignal(SVSignalInfo &signalInfo)
 {
-   double sum = 0;
+   // Initialize signal info
+   signalInfo.Init();
    
-   for(int i = 0; i < m_volumeWindow; i++)
+   // Check trading hours if session filtering is enabled
+   if(m_useSessionFiltering && !IsWithinTradingHours())
    {
-      sum += m_volumeBuffer[i];
-      m_volumeMA[i] = sum / (i + 1); // Calculate running average
+      return 0; // No signal outside trading hours
    }
    
-   return m_volumeMA[m_volumeWindow - 1]; // Return the last MA value
-}
-
-//+------------------------------------------------------------------+
-//| Check if volume is increasing                                    |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsVolumeIncreasing(string symbol, ENUM_TIMEFRAMES timeframe)
-{
-   if(!AnalyzeVolume(symbol, timeframe))
-      return false;
-      
-   // Check if current volume is increasing over the last few bars
-   return m_volumeBuffer[0] > m_volumeBuffer[1] && m_volumeBuffer[1] > m_volumeBuffer[2];
-}
-
-//+------------------------------------------------------------------+
-//| Check if volume is higher than average by a factor               |
-//+------------------------------------------------------------------+
-bool CSVMarketAnalyzer::IsVolumeHigherThanAverage(string symbol, ENUM_TIMEFRAMES timeframe, double factor = 1.2)
-{
-   if(!AnalyzeVolume(symbol, timeframe))
-      return false;
-      
-   // Current volume
-   long currentVolume = m_volumeBuffer[0];
+   // Check volatility if enabled
+   if(m_checkVolatility && !IsVolatilityAcceptable())
+   {
+      return 0; // No signal if volatility is outside acceptable range
+   }
    
-   // Average volume (last value in the MA array)
-   double averageVolume = m_volumeMA[m_volumeWindow - 1];
+   // Get indicator values
+   double maFastBuffer[], maSlowBuffer[];
+   double macdBuffer[], macdSignalBuffer[];
+   double rsiBuffer[];
    
-   return currentVolume > averageVolume * factor;
+   // Copy indicator data
+   if(CopyBuffer(m_maFastHandle, 0, 0, 2, maFastBuffer) <= 0 ||
+      CopyBuffer(m_maSlowHandle, 0, 0, 2, maSlowBuffer) <= 0 ||
+      CopyBuffer(m_macdHandle, 0, 0, 2, macdBuffer) <= 0 ||     // MACD line
+      CopyBuffer(m_macdHandle, 1, 0, 2, macdSignalBuffer) <= 0 || // Signal line
+      CopyBuffer(m_rsiHandle, 0, 0, 2, rsiBuffer) <= 0)
+   {
+      Print("Failed to copy indicator buffers");
+      return 0;
+   }
+   
+   // Signal generation logic
+   int signal = 0;
+   
+   // Moving Average crossover
+   bool maCrossUp = maFastBuffer[1] < maSlowBuffer[1] && maFastBuffer[0] > maSlowBuffer[0];
+   bool maCrossDown = maFastBuffer[1] > maSlowBuffer[1] && maFastBuffer[0] < maSlowBuffer[0];
+   
+   // MACD crossover
+   bool macdCrossUp = macdBuffer[1] < macdSignalBuffer[1] && macdBuffer[0] > macdSignalBuffer[0];
+   bool macdCrossDown = macdBuffer[1] > macdSignalBuffer[1] && macdBuffer[0] < macdSignalBuffer[0];
+   
+   // RSI oversold/overbought
+   bool rsiOverbought = rsiBuffer[0] > 70;
+   bool rsiOversold = rsiBuffer[0] < 30;
+   
+   // Generate signals based on combined indicators
+   if(maCrossUp && macdCrossUp && !rsiOverbought)
+   {
+      signal = 1; // Buy signal
+      signalInfo.signalSource = "MA & MACD Crossover (Buy)";
+   }
+   else if(maCrossDown && macdCrossDown && !rsiOversold)
+   {
+      signal = -1; // Sell signal
+      signalInfo.signalSource = "MA & MACD Crossover (Sell)";
+   }
+   
+   // If a signal is generated, calculate entry price, SL and TP
+   if(signal != 0)
+   {
+      signalInfo.signal = signal;
+      signalInfo.signalTime = TimeCurrent();
+      signalInfo.timeframe = EnumToString(PERIOD_CURRENT);
+      
+      // Set entry price
+      if(signal == 1) // Buy
+      {
+         signalInfo.entryPrice = m_symbolInfo.Ask();
+         signalInfo.stopLoss = signalInfo.entryPrice - m_currentATR * m_atrMultiplier;
+         signalInfo.takeProfit = signalInfo.entryPrice + m_currentATR * m_atrMultiplier * 2; // 1:2 risk-reward
+      }
+      else // Sell
+      {
+         signalInfo.entryPrice = m_symbolInfo.Bid();
+         signalInfo.stopLoss = signalInfo.entryPrice + m_currentATR * m_atrMultiplier;
+         signalInfo.takeProfit = signalInfo.entryPrice - m_currentATR * m_atrMultiplier * 2; // 1:2 risk-reward
+      }
+      
+      // Calculate risk-reward ratio
+      double risk = MathAbs(signalInfo.entryPrice - signalInfo.stopLoss);
+      double reward = MathAbs(signalInfo.entryPrice - signalInfo.takeProfit);
+      signalInfo.riskRewardRatio = reward / risk;
+      
+      // Calculate signal strength
+      signalInfo.signalStrength = CalculateSignalStrength(signal);
+      
+      // Check if signal strength meets minimum requirement
+      if(signalInfo.signalStrength < m_minSignalStrength)
+         signal = 0; // Reset signal if strength is below minimum
+   }
+   
+   return signal;
 }
 
 //+------------------------------------------------------------------+
-//| Calculate volume strength (percentage above average)             |
+//| Check if current time is within allowed trading hours             |
 //+------------------------------------------------------------------+
-double CSVMarketAnalyzer::GetVolumeStrength(string symbol, ENUM_TIMEFRAMES timeframe)
+bool CSVMarketAnalyzer::IsWithinTradingHours()
 {
-   if(!AnalyzeVolume(symbol, timeframe))
+   int hour = TimeHour(TimeCurrent());
+   
+   // Asian session: 00:00-08:00
+   bool isAsianSession = (hour >= 0 && hour < 8);
+   
+   // European session: 08:00-16:00
+   bool isEuropeanSession = (hour >= 8 && hour < 16);
+   
+   // US session: 14:00-23:00
+   bool isUSSession = (hour >= 14 && hour < 23);
+   
+   // Check if trading is allowed in the current session
+   return (isAsianSession && m_allowTradingInAsianSession) ||
+          (isEuropeanSession && m_allowTradingInEuropeanSession) ||
+          (isUSSession && m_allowTradingInUSSession);
+}
+
+//+------------------------------------------------------------------+
+//| Check if volatility is within acceptable range                    |
+//+------------------------------------------------------------------+
+bool CSVMarketAnalyzer::IsVolatilityAcceptable()
+{
+   return (m_currentATR >= m_minVolatility && m_currentATR <= m_maxVolatility);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate signal strength based on multiple factors               |
+//+------------------------------------------------------------------+
+double CSVMarketAnalyzer::CalculateSignalStrength(int signalType)
+{
+   double strength = 50.0; // Base strength
+   
+   // Get indicator values for calculation
+   double maFastBuffer[], maSlowBuffer[];
+   double macdBuffer[], macdSignalBuffer[];
+   double rsiBuffer[];
+   
+   // Copy indicator data
+   if(CopyBuffer(m_maFastHandle, 0, 0, 1, maFastBuffer) <= 0 ||
+      CopyBuffer(m_maSlowHandle, 0, 0, 1, maSlowBuffer) <= 0 ||
+      CopyBuffer(m_macdHandle, 0, 0, 1, macdBuffer) <= 0 ||     // MACD line
+      CopyBuffer(m_macdHandle, 1, 0, 1, macdSignalBuffer) <= 0 || // Signal line
+      CopyBuffer(m_rsiHandle, 0, 0, 1, rsiBuffer) <= 0)
+   {
+      Print("Failed to copy indicator buffers for strength calculation");
+      return strength;
+   }
+   
+   // Calculate MA divergence strength (0-20)
+   double maDiff = MathAbs(maFastBuffer[0] - maSlowBuffer[0]);
+   double maPercentDiff = maDiff / maSlowBuffer[0] * 100.0;
+   double maStrength = MathMin(maPercentDiff * 5.0, 20.0);
+   
+   // Calculate MACD strength (0-20)
+   double macdDiff = MathAbs(macdBuffer[0] - macdSignalBuffer[0]);
+   double macdStrength = MathMin(macdDiff * 100.0, 20.0);
+   
+   // Calculate RSI strength (0-20)
+   double rsiValue = rsiBuffer[0];
+   double rsiStrength = 0.0;
+   
+   if(signalType == 1) // Buy
+   {
+      rsiStrength = MathMax(0, 50.0 - rsiValue) / 50.0 * 20.0; // Lower RSI = stronger buy signal
+   }
+   else if(signalType == -1) // Sell
+   {
+      rsiStrength = MathMax(0, rsiValue - 50.0) / 50.0 * 20.0; // Higher RSI = stronger sell signal
+   }
+   
+   // Calculate volatility strength (0-20)
+   double atrBuffer[];
+   CopyBuffer(m_atrHandle, 0, 0, 1, atrBuffer);
+   double atrPercentage = atrBuffer[0] / m_symbolInfo.Point() / 10.0;
+   double volStrength = MathMin(atrPercentage, 20.0);
+   
+   // Combine all strengths
+   strength = maStrength + macdStrength + rsiStrength + volStrength + 20.0; // Add 20 base points
+   
+   return strength;
+}
+
+//+------------------------------------------------------------------+
+//| Get Moving Average value                                          |
+//+------------------------------------------------------------------+
+double CSVMarketAnalyzer::GetMovingAverage(int maPeriod, int shift = 0)
+{
+   // Determine which MA handle to use
+   int handle = (maPeriod == m_fastMAPeriod) ? m_maFastHandle : 
+               (maPeriod == m_slowMAPeriod) ? m_maSlowHandle : INVALID_HANDLE;
+               
+   // If handle is invalid, try to create a new one
+   if(handle == INVALID_HANDLE)
+   {
+      handle = iMA(m_symbol, PERIOD_CURRENT, maPeriod, 0, MODE_SMA, PRICE_CLOSE);
+      if(handle == INVALID_HANDLE)
+      {
+         Print("Failed to create MA handle for period ", maPeriod);
+         return 0.0;
+      }
+   }
+   
+   // Copy data
+   double buffer[];
+   if(CopyBuffer(handle, 0, shift, 1, buffer) <= 0)
+   {
+      Print("Failed to copy MA buffer for period ", maPeriod);
       return 0.0;
-      
-   // Current volume
-   double currentVolume = (double)m_volumeBuffer[0];
+   }
    
-   // Average volume (last value in the MA array)
-   double averageVolume = m_volumeMA[m_volumeWindow - 1];
-   
-   if(averageVolume == 0)
+   return buffer[0];
+}
+
+//+------------------------------------------------------------------+
+//| Get ATR value                                                     |
+//+------------------------------------------------------------------+
+double CSVMarketAnalyzer::GetAverageTrueRange(int shift = 0)
+{
+   double buffer[];
+   if(CopyBuffer(m_atrHandle, 0, shift, 1, buffer) <= 0)
+   {
+      Print("Failed to copy ATR buffer");
       return 0.0;
-      
-   return (currentVolume - averageVolume) / averageVolume * 100.0;
+   }
+   
+   return buffer[0];
+}
+
+//+------------------------------------------------------------------+
+//| Get RSI value                                                     |
+//+------------------------------------------------------------------+
+double CSVMarketAnalyzer::GetRSI(int shift = 0)
+{
+   double buffer[];
+   if(CopyBuffer(m_rsiHandle, 0, shift, 1, buffer) <= 0)
+   {
+      Print("Failed to copy RSI buffer");
+      return 0.0;
+   }
+   
+   return buffer[0];
+}
+
+//+------------------------------------------------------------------+
+//| Get MACD value                                                    |
+//+------------------------------------------------------------------+
+double CSVMarketAnalyzer::GetMACD(int macdLine, int shift = 0)
+{
+   double buffer[];
+   if(CopyBuffer(m_macdHandle, macdLine, shift, 1, buffer) <= 0)
+   {
+      Print("Failed to copy MACD buffer for line ", macdLine);
+      return 0.0;
+   }
+   
+   return buffer[0];
+}
+
+//+------------------------------------------------------------------+
+//| Check if trend is up                                              |
+//+------------------------------------------------------------------+
+bool CSVMarketAnalyzer::IsTrendUp()
+{
+   double maFastBuffer[], maSlowBuffer[];
+   
+   if(CopyBuffer(m_maFastHandle, 0, 0, 2, maFastBuffer) <= 0 ||
+      CopyBuffer(m_maSlowHandle, 0, 0, 2, maSlowBuffer) <= 0)
+   {
+      Print("Failed to copy MA buffers for trend check");
+      return false;
+   }
+   
+   return maFastBuffer[0] > maSlowBuffer[0] && maFastBuffer[0] > maFastBuffer[1];
+}
+
+//+------------------------------------------------------------------+
+//| Check if trend is down                                            |
+//+------------------------------------------------------------------+
+bool CSVMarketAnalyzer::IsTrendDown()
+{
+   double maFastBuffer[], maSlowBuffer[];
+   
+   if(CopyBuffer(m_maFastHandle, 0, 0, 2, maFastBuffer) <= 0 ||
+      CopyBuffer(m_maSlowHandle, 0, 0, 2, maSlowBuffer) <= 0)
+   {
+      Print("Failed to copy MA buffers for trend check");
+      return false;
+   }
+   
+   return maFastBuffer[0] < maSlowBuffer[0] && maFastBuffer[0] < maFastBuffer[1];
+}
+
+//+------------------------------------------------------------------+
+//| Check if market is rangebound                                     |
+//+------------------------------------------------------------------+
+bool CSVMarketAnalyzer::IsRangebound()
+{
+   double maFastBuffer[], maSlowBuffer[];
+   
+   if(CopyBuffer(m_maFastHandle, 0, 0, 10, maFastBuffer) <= 0 ||
+      CopyBuffer(m_maSlowHandle, 0, 0, 10, maSlowBuffer) <= 0)
+   {
+      Print("Failed to copy MA buffers for range check");
+      return false;
+   }
+   
+   // Calculate average distance between MAs
+   double totalDist = 0.0;
+   for(int i = 0; i < 10; i++)
+   {
+      totalDist += MathAbs(maFastBuffer[i] - maSlowBuffer[i]);
+   }
+   double avgDist = totalDist / 10.0;
+   
+   // Calculate standard deviation of distances
+   double totalVar = 0.0;
+   for(int i = 0; i < 10; i++)
+   {
+      double dist = MathAbs(maFastBuffer[i] - maSlowBuffer[i]);
+      totalVar += MathPow(dist - avgDist, 2);
+   }
+   double stdDev = MathSqrt(totalVar / 10.0);
+   
+   // If standard deviation is low relative to average distance, market is rangebound
+   return (stdDev / avgDist < 0.2);
+}
+
+//+------------------------------------------------------------------+
+//| Check if volatility is increasing                                 |
+//+------------------------------------------------------------------+
+bool CSVMarketAnalyzer::IsVolatilityIncreasing()
+{
+   double atrBuffer[];
+   
+   if(CopyBuffer(m_atrHandle, 0, 0, 5, atrBuffer) <= 0)
+   {
+      Print("Failed to copy ATR buffer for volatility check");
+      return false;
+   }
+   
+   return (atrBuffer[0] > atrBuffer[4]); // Current ATR > ATR 5 bars ago
+}
+
+//+------------------------------------------------------------------+
+//| Check if volatility is decreasing                                 |
+//+------------------------------------------------------------------+
+bool CSVMarketAnalyzer::IsVolatilityDecreasing()
+{
+   double atrBuffer[];
+   
+   if(CopyBuffer(m_atrHandle, 0, 0, 5, atrBuffer) <= 0)
+   {
+      Print("Failed to copy ATR buffer for volatility check");
+      return false;
+   }
+   
+   return (atrBuffer[0] < atrBuffer[4]); // Current ATR < ATR 5 bars ago
+}
+
+//+------------------------------------------------------------------+
+//| Get current market volatility                                     |
+//+------------------------------------------------------------------+
+double CSVMarketAnalyzer::GetMarketVolatility()
+{
+   return m_currentATR;
 }
