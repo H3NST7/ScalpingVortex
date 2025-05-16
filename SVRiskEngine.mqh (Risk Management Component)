@@ -7,9 +7,9 @@
 #property link      "https://www.h3nst7.com"
 #property strict
 
-#include "SVUtils.mqh"
-#include "SVMarketAnalyzer.mqh"
-#include "SVPortfolio.mqh"
+#include "ScalpingVortex\SVUtils.mqh"
+#include "ScalpingVortex\SVMarketAnalyzer.mqh"
+#include "ScalpingVortex\SVPortfolio.mqh"
 
 // Structure to hold signal information
 struct SVSignalInfo
