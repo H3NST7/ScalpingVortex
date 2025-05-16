@@ -1,373 +1,271 @@
 //+------------------------------------------------------------------+
-//|                                               ScalpingVortex.mq5 |
+//|                                             ScalpingVortex.mq5 |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "ScalpingVortex"
+#property copyright "Copyright 2025, Scalping Vortex"
 #property link      "https://github.com/H3NST7/ScalpingVortex"
 #property version   "1.00"
-#property strict
 
-// Include system core
-#include "ScalpingVortex\SVCore.mqh"
+// Include required files
+#include <Trade\Trade.mqh>
+#include "SVCore.mqh"
+#include "SVMarketAnalyzer.mqh"
+#include "SVTradeManager.mqh"
+#include "SVPortfolio.mqh"
+#include "SVRiskEngine.mqh"
+#include "SVUtils.mqh"
 
-//--- Input Parameters
-// General settings
-input int    InpMagicNumber = 12345;       // Magic number
-input int    InpSlippage = 3;              // Maximum slippage in points
+// Input parameters
+input string          InpGeneral         = "=== General Settings ===";       // === General Settings ===
+input string          InpSymbol          = "";                               // Symbol (empty = current)
+input ENUM_TIMEFRAMES InpTimeframe       = PERIOD_CURRENT;                   // Timeframe
+input int             InpMagicNumber     = 123456;                           // Magic number
+input bool            InpEnableTrading   = true;                             // Enable trading
+input bool            InpDebugMode       = false;                            // Debug mode
 
-// Risk management
-input double InpRiskPerTrade = 1.0;        // Risk per trade (% of account)
-input int    InpMaxTrades = 5;             // Maximum concurrent trades
+input string          InpTradeParams     = "=== Trading Parameters ===";     // === Trading Parameters ===
+input int             InpMaxTrades       = 3;                                // Maximum concurrent trades
+input bool            InpAllowLongs      = true;                             // Allow long trades
+input bool            InpAllowShorts     = true;                             // Allow short trades
+input double          InpMinVolatilityATR= 0.0;                              // Minimum ATR volatility
 
-// Trading schedule
-input bool   InpTradingEnabled = true;     // Enable trading
-input string InpTradingHoursStart = "08:00"; // Trading hours start (server time)
-input string InpTradingHoursEnd = "20:00";  // Trading hours end (server time)
-input bool   InpTradeFriday = true;        // Allow trading on Friday
-input bool   InpTradeMonday = true;        // Allow trading on Monday
+input string          InpIndicators      = "=== Indicator Parameters ===";   // === Indicator Parameters ===
+input int             InpFastMA          = 20;                               // Fast MA period
+input int             InpSlowMA          = 50;                               // Slow MA period
+input int             InpRSIPeriod       = 14;                               // RSI period
+input int             InpATRPeriod       = 14;                               // ATR period
+input int             InpMACDFast        = 12;                               // MACD fast EMA period
+input int             InpMACDSlow        = 26;                               // MACD slow EMA period
+input int             InpMACDSignal      = 9;                                // MACD signal period
 
-// Trading direction
-input bool   InpAllowLongs = true;         // Allow long trades
-input bool   InpAllowShorts = true;        // Allow short trades
+input string          InpRiskParams      = "=== Risk Parameters ===";        // === Risk Parameters ===
+input double          InpRiskPercent     = 2.0;                              // Risk per trade in percentage
+input double          InpMaxEquityRisk   = 10.0;                             // Maximum equity at risk
+input double          InpMinRewardRatio  = 1.5;                              // Minimum reward-to-risk ratio
+input double          InpATRMultiplier   = 2.0;                              // ATR multiplier for stops
+input bool            InpUseFixedLots    = false;                            // Use fixed lot size
+input double          InpFixedLotSize    = 0.01;                             // Fixed lot size
+input bool            InpUseEquityProtection = true;                         // Use equity protection
+input double          InpEquityProtectionLevel = 90.0;                       // Equity protection level in percentage
 
-// Indicators
-input int    InpFastMA = 20;               // Fast MA period
-input int    InpSlowMA = 50;               // Slow MA period
-input int    InpRSIPeriod = 14;            // RSI period
-input int    InpATRPeriod = 14;            // ATR period
-input double InpMinVolatilityATR = 0.0005; // Minimum volatility (ATR value)
+input string          InpSessionParams   = "=== Session Parameters ===";     // === Session Parameters ===
+input bool            InpFilterSessions  = false;                            // Filter trading sessions
+input bool            InpAllowAsianSession = true;                          // Allow trading during Asian session
+input bool            InpAllowEuropeanSession = true;                       // Allow trading during European session
+input bool            InpAllowUSSession  = true;                            // Allow trading during US session
 
-// Trade management
-input bool   InpUseTrailingStop = true;    // Use trailing stop
-input double InpTrailingStopATR = 1.5;     // Trailing stop (ATR multiplier)
-input bool   InpUseBreakEven = true;       // Enable break even
-input double InpBreakEvenPips = 15.0;      // Break even after profit (pips)
-input double InpBreakEvenBuffer = 5.0;     // Break even buffer (pips)
-
-// Timeframe settings
-input ENUM_TIMEFRAMES InpTimeframe = PERIOD_M15; // Trading timeframe
-
-//+------------------------------------------------------------------+
-//| Global Variables                                                 |
-//+------------------------------------------------------------------+
-CSVCore* g_core = NULL;           // Core system pointer
-int g_timerInterval = 60;         // Timer interval in seconds
-datetime g_lastTrailingCheckTime = 0; // Last trailing stop check time
-datetime g_lastBreakEvenCheckTime = 0; // Last break even check time
+// Global variables
+CSVCore*             g_core = NULL;              // Core EA object
+bool                 g_initialized = false;      // Initialization flag
+int                  g_timerCounter = 0;         // Timer counter
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
 //+------------------------------------------------------------------+
 int OnInit()
 {
-   // Print system start message
-   Print("ScalpingVortex EA initializing...");
+   // Initialize utility class
+   CSVUtils::Initialize("ScalpingVortex");
    
-   // Create the core system
-   if(g_core != NULL)
-   {
-      delete g_core;
-      g_core = NULL;
-   }
+   // Set debug mode
+   if(InpDebugMode)
+      CSVUtils::SetLogLevel(LOG_LEVEL_DEBUG);
+   else
+      CSVUtils::SetLogLevel(LOG_LEVEL_INFO);
    
+   // Log initialization
+   CSVUtils::Log(LOG_LEVEL_INFO, "Initializing ScalpingVortex EA...");
+   
+   // Determine symbol
+   string symbol = InpSymbol == "" ? Symbol() : InpSymbol;
+   
+   // Create and initialize core object
    g_core = new CSVCore();
-   
-   if(g_core == NULL)
+   if(!g_core.Initialize(symbol, InpTimeframe, InpMagicNumber))
    {
-      Print("Failed to create core system! Not enough memory?");
-      return INIT_FAILED;
-   }
-   
-   // Initialize core system with input parameters
-   if(!g_core.Initialize(InpMagicNumber, InpSlippage, InpRiskPerTrade, Symbol(), InpTimeframe))
-   {
-      Print("Failed to initialize core system!");
+      CSVUtils::Log(LOG_LEVEL_ERROR, "Failed to initialize EA core. Error: " + g_core.GetLastErrorDescription());
       delete g_core;
       g_core = NULL;
       return INIT_FAILED;
    }
    
-   // Configure the system based on input parameters
+   // Set trading parameters
    g_core.SetMaxConcurrentTrades(InpMaxTrades);
    g_core.SetDirectionalBias(InpAllowLongs, InpAllowShorts);
    g_core.SetMinimumVolatility(InpMinVolatilityATR);
    
-   // Set trading mode
-   if(InpTradingEnabled)
+   // Enable/disable trading
+   if(InpEnableTrading)
       g_core.EnableTrading();
    else
       g_core.DisableTrading();
    
-   // Initialize the market analyzer with custom settings
-   CSVMarketAnalyzer* marketAnalyzer = g_core.GetMarketAnalyzer();
-   if(marketAnalyzer != NULL)
+   // Initialize market analyzer
+   CSVMarketAnalyzer* analyzer = g_core.GetMarketAnalyzer();
+   if(analyzer != NULL)
    {
-      // Re-initialize with custom indicator settings
-      marketAnalyzer.Initialize(InpFastMA, InpSlowMA, InpATRPeriod, InpRSIPeriod, 20, 2.0, 10);
+      analyzer.Initialize(symbol, InpFastMA, InpSlowMA, InpATRPeriod, InpRSIPeriod, InpMACDFast, InpMACDSlow, InpMACDSignal);
+      analyzer.EnableSessionFiltering(InpFilterSessions);
+      analyzer.SetTradingSessions(InpAllowAsianSession, InpAllowEuropeanSession, InpAllowUSSession);
    }
    
-   // Initialize timer
-   EventSetTimer(g_timerInterval);
+   // Initialize risk engine
+   CSVRiskEngine* riskEngine = g_core.GetRiskEngine();
+   if(riskEngine != NULL)
+   {
+      riskEngine.SetRiskPercent(InpRiskPercent);
+      riskEngine.SetMaxEquityRisk(InpMaxEquityRisk);
+      riskEngine.SetMinRewardRatio(InpMinRewardRatio);
+      riskEngine.UseFixedLots(InpUseFixedLots);
+      riskEngine.SetFixedLotSize(InpFixedLotSize);
+      riskEngine.UseATRStops(true, InpATRMultiplier);
+      riskEngine.UseEquityProtection(InpUseEquityProtection, InpEquityProtectionLevel);
+   }
    
-   // Reset tracking variables
-   g_lastTrailingCheckTime = 0;
-   g_lastBreakEvenCheckTime = 0;
+   // Set initialization flag
+   g_initialized = true;
    
-   // Display initialization success message
-   Print("ScalpingVortex EA initialized successfully!");
+   // Set timer for periodic checks
+   EventSetTimer(1);
+   
+   // Log successful initialization
+   CSVUtils::Log(LOG_LEVEL_INFO, "ScalpingVortex EA initialized successfully");
    
    return INIT_SUCCEEDED;
 }
 
 //+------------------------------------------------------------------+
-//| Expert deinitialization function                                 |
+//| Expert deinitialization function                                |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
-   // Stop the timer
+   // Log deinitialization
+   CSVUtils::Log(LOG_LEVEL_INFO, "Deinitializing ScalpingVortex EA. Reason: " + IntegerToString(reason));
+   
+   // Stop timer
    EventKillTimer();
    
-   // Clean up the core system
+   // Clean up core object
    if(g_core != NULL)
    {
       delete g_core;
       g_core = NULL;
    }
    
-   // Print deinitialization message
-   Print("ScalpingVortex EA deinitialized. Reason code: ", reason);
+   // Reset initialization flag
+   g_initialized = false;
+   
+   // Deinitialize utility class
+   CSVUtils::Deinitialize();
 }
 
 //+------------------------------------------------------------------+
-//| Expert tick function                                             |
+//| Expert tick function                                            |
 //+------------------------------------------------------------------+
 void OnTick()
 {
-   if(g_core == NULL || !g_core.IsInitialized())
+   // Check if EA is initialized
+   if(!g_initialized || g_core == NULL)
       return;
       
-   // Process tick in the core system
-   g_core.ProcessTick();
-   
-   // Check if we need to update trailing stops
-   if(InpUseTrailingStop)
-      ManageTrailingStops();
-   
-   // Check if we need to update break even stops
-   if(InpUseBreakEven)
-      ManageBreakEven();
-}
-
-//+------------------------------------------------------------------+
-//| Expert timer function                                             |
-//+------------------------------------------------------------------+
-void OnTimer()
-{
-   if(g_core == NULL || !g_core.IsInitialized())
-      return;
-      
-   // Process timer in the core system
-   g_core.ProcessTimer();
-}
-
-//+------------------------------------------------------------------+
-//| Check if current time is within trading hours                     |
-//+------------------------------------------------------------------+
-bool IsWithinTradingHours()
-{
-   // Get current time
-   datetime currentTime = TimeCurrent();
-   MqlDateTime dt;
-   TimeToStruct(currentTime, dt);
-   
-   // Check day of week restrictions
-   if(dt.day_of_week == 1 && !InpTradeMonday)
-      return false;
-      
-   if(dt.day_of_week == 5 && !InpTradeFriday)
-      return false;
-      
-   // Check trading hours
-   int currentHour = dt.hour;
-   int currentMinute = dt.min;
-   int currentTimeMinutes = currentHour * 60 + currentMinute;
-   
-   // Parse trading hours start
-   int startHour = (int)StringToInteger(StringSubstr(InpTradingHoursStart, 0, 2));
-   int startMinute = (int)StringToInteger(StringSubstr(InpTradingHoursStart, 3, 2));
-   int startTimeMinutes = startHour * 60 + startMinute;
-   
-   // Parse trading hours end
-   int endHour = (int)StringToInteger(StringSubstr(InpTradingHoursEnd, 0, 2));
-   int endMinute = (int)StringToInteger(StringSubstr(InpTradingHoursEnd, 3, 2));
-   int endTimeMinutes = endHour * 60 + endMinute;
-   
-   // Check if current time is within trading hours
-   return (currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes);
-}
-
-//+------------------------------------------------------------------+
-//| Manage trailing stops for open positions                          |
-//+------------------------------------------------------------------+
-void ManageTrailingStops()
-{
-   // Check if it's time to update trailing stops (once per minute)
-   datetime currentTime = TimeCurrent();
-   if(currentTime - g_lastTrailingCheckTime < 60)
-      return;
-      
-   g_lastTrailingCheckTime = currentTime;
-   
-   // Get trade manager
-   CSVTradeManager* tradeManager = g_core.GetTradeManager();
-   if(tradeManager == NULL)
-      return;
-      
-   // Get market analyzer for ATR values
-   CSVMarketAnalyzer* marketAnalyzer = g_core.GetMarketAnalyzer();
-   if(marketAnalyzer == NULL)
-      return;
-      
-   // Get ATR value for trailing stop calculation
-   double atr = marketAnalyzer.GetAverageTrueRange(Symbol(), InpTimeframe);
-   double trailingDistance = atr * InpTrailingStopATR;
-   
-   // Get current price
-   double bid = MarketInfo(Symbol(), MODE_BID);
-   double ask = MarketInfo(Symbol(), MODE_ASK);
-   
-   // Loop through all open orders
-   for(int i = 0; i < OrdersTotal(); i++)
+   // Check if trading is allowed
+   if(!MQLInfoInteger(MQL_TRADE_ALLOWED))
    {
-      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-         continue;
-         
-      // Only process orders for our EA
-      if(OrderMagicNumber() != InpMagicNumber || OrderSymbol() != Symbol())
-         continue;
-         
-      int orderType = OrderType();
-      int ticket = OrderTicket();
-      double openPrice = OrderOpenPrice();
-      double currentSL = OrderStopLoss();
-      double currentTP = OrderTakeProfit();
-      
-      // Calculate new stop loss based on trailing settings
-      double newSL = currentSL;
-      
-      if(orderType == OP_BUY)
-      {
-         // For buy orders, move stop loss up as price moves up
-         double potentialSL = NormalizeDouble(bid - trailingDistance, Digits);
-         
-         // Only move stop loss up, never down
-         if(potentialSL > currentSL && bid > openPrice)
-            newSL = potentialSL;
-      }
-      else if(orderType == OP_SELL)
-      {
-         // For sell orders, move stop loss down as price moves down
-         double potentialSL = NormalizeDouble(ask + trailingDistance, Digits);
-         
-         // Only move stop loss down, never up
-         if((potentialSL < currentSL || currentSL == 0) && ask < openPrice)
-            newSL = potentialSL;
-      }
-      
-      // Modify the order if stop loss has changed
-      if(MathAbs(newSL - currentSL) > Point)
-      {
-         if(!tradeManager.ModifyOrder(ticket, newSL, currentTP))
-         {
-            int errorCode = GetLastError();
-            Print("Failed to update trailing stop for order #", ticket, ": ", errorCode, " - ", GetErrorDescription(errorCode));
-         }
-      }
+      CSVUtils::Log(LOG_LEVEL_WARNING, "Trading is not allowed");
+      return;
+   }
+   
+   // Process tick in core
+   if(!g_core.ProcessTick())
+   {
+      CSVUtils::Log(LOG_LEVEL_ERROR, "Error processing tick: " + g_core.GetLastErrorDescription());
    }
 }
 
 //+------------------------------------------------------------------+
-//| Manage break even stops for open positions                       |
+//| Expert timer function                                           |
 //+------------------------------------------------------------------+
-void ManageBreakEven()
+void OnTimer()
 {
-   // Check if it's time to update break even stops (once per minute)
-   datetime currentTime = TimeCurrent();
-   if(currentTime - g_lastBreakEvenCheckTime < 60)
+   // Check if EA is initialized
+   if(!g_initialized || g_core == NULL)
       return;
       
-   g_lastBreakEvenCheckTime = currentTime;
-   
-   // Get trade manager
-   CSVTradeManager* tradeManager = g_core.GetTradeManager();
-   if(tradeManager == NULL)
-      return;
-      
-   // Convert pips to points
-   double breakEvenPipsPoints = InpBreakEvenPips * 10.0 * Point;
-   double breakEvenBufferPoints = InpBreakEvenBuffer * 10.0 * Point;
-   
-   // Get current price
-   double bid = MarketInfo(Symbol(), MODE_BID);
-   double ask = MarketInfo(Symbol(), MODE_ASK);
-   
-   // Loop through all open orders
-   for(int i = 0; i < OrdersTotal(); i++)
+   // Process timer event
+   if(!g_core.ProcessTimer())
    {
-      if(!OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-         continue;
-         
-      // Only process orders for our EA
-      if(OrderMagicNumber() != InpMagicNumber || OrderSymbol() != Symbol())
-         continue;
-         
-      int orderType = OrderType();
-      int ticket = OrderTicket();
-      double openPrice = OrderOpenPrice();
-      double currentSL = OrderStopLoss();
-      double currentTP = OrderTakeProfit();
+      CSVUtils::Log(LOG_LEVEL_ERROR, "Error processing timer: " + g_core.GetLastErrorDescription());
+   }
+   
+   // Increment timer counter
+   g_timerCounter++;
+   
+   // Every 60 seconds, perform additional checks
+   if(g_timerCounter >= 60)
+   {
+      // Reset counter
+      g_timerCounter = 0;
       
-      // Skip orders that already have SL at or better than break even
-      if(orderType == OP_BUY && currentSL >= openPrice)
-         continue;
-         
-      if(orderType == OP_SELL && currentSL <= openPrice && currentSL > 0)
-         continue;
+      // Check for daily limits, equity protection, etc.
+      CheckProtectionLimits();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Trade event function                                            |
+//+------------------------------------------------------------------+
+void OnTrade()
+{
+   // This function is called when a trade operation occurs
+   // It can be used to update portfolio statistics, etc.
+   
+   // Check if EA is initialized
+   if(!g_initialized || g_core == NULL)
+      return;
       
-      // Calculate break even stop loss
-      double newSL = 0;
-      bool shouldModify = false;
+   // Update portfolio
+   CSVPortfolio* portfolio = g_core.GetPortfolio();
+   if(portfolio != NULL)
+   {
+      portfolio.Update();
+   }
+}
+
+//+------------------------------------------------------------------+
+//| Check protection limits                                          |
+//+------------------------------------------------------------------+
+void CheckProtectionLimits()
+{
+   // Check if EA is initialized
+   if(!g_initialized || g_core == NULL)
+      return;
       
-      if(orderType == OP_BUY)
+   // Get components
+   CSVRiskEngine* riskEngine = g_core.GetRiskEngine();
+   CSVPortfolio* portfolio = g_core.GetPortfolio();
+   
+   if(riskEngine == NULL || portfolio == NULL)
+      return;
+      
+   // Check equity protection
+   if(InpUseEquityProtection && !riskEngine.IsEquityRiskAcceptable())
+   {
+      CSVUtils::Log(LOG_LEVEL_WARNING, "Equity protection triggered. Disabling trading.");
+      g_core.DisableTrading();
+      
+      // Close all positions
+      CSVTradeManager* tradeManager = g_core.GetTradeManager();
+      if(tradeManager != NULL)
       {
-         // For buy orders, set to break even if price moves up enough
-         if(bid >= openPrice + breakEvenPipsPoints)
-         {
-            newSL = openPrice + breakEvenBufferPoints;
-            shouldModify = true;
-         }
+         tradeManager.CloseAllPositions();
+         tradeManager.DeleteAllOrders();
       }
-      else if(orderType == OP_SELL)
-      {
-         // For sell orders, set to break even if price moves down enough
-         if(ask <= openPrice - breakEvenPipsPoints)
-         {
-            newSL = openPrice - breakEvenBufferPoints;
-            shouldModify = true;
-         }
-      }
-      
-      // Modify the order if needed
-      if(shouldModify)
-      {
-         if(!tradeManager.ModifyOrder(ticket, newSL, currentTP))
-         {
-            int errorCode = GetLastError();
-            Print("Failed to update break even stop for order #", ticket, ": ", errorCode, " - ", GetErrorDescription(errorCode));
-         }
-         else
-         {
-            Print("Updated order #", ticket, " to break even. New SL: ", newSL);
-         }
-      }
+   }
+   
+   // Check daily loss limit
+   if(riskEngine.UseDailyLossLimit() && !riskEngine.IsDailyLossAcceptable())
+   {
+      CSVUtils::Log(LOG_LEVEL_WARNING, "Daily loss limit triggered. Disabling trading for today.");
+      g_core.DisableTrading();
    }
 }
