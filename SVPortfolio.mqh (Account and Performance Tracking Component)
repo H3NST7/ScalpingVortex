@@ -1,65 +1,106 @@
 //+------------------------------------------------------------------+
-//|                                                   SVPortfolio.mqh |
+//|                                               SVPortfolio.mqh |
+//|                                             Scalping Vortex EA |
 //+------------------------------------------------------------------+
-#property copyright "ScalpingVortex"
+#property copyright "Copyright 2025, Scalping Vortex"
 #property link      "https://github.com/H3NST7/ScalpingVortex"
 #property version   "1.00"
-#property strict
 
-// Forward declarations to break circular dependencies
-class CSVTradeManager;
+#include <Trade\SymbolInfo.mqh>
+#include <Trade\AccountInfo.mqh>
+#include <Arrays\ArrayObj.mqh>
 
 //+------------------------------------------------------------------+
-//| Portfolio class for managing positions and trade statistics       |
+//| CSVPortfolio - Manages account equity and risk management        |
 //+------------------------------------------------------------------+
 class CSVPortfolio
 {
 private:
-   // Account metrics
-   double            m_accountBalance;
-   double            m_accountEquity;
-   double            m_drawdown;
-   double            m_maxDrawdown;
-   datetime          m_lastUpdateTime;
+   // Account information
+   CAccountInfo      m_accountInfo;       // Account information
    
-   // Trade statistics
-   int               m_totalTrades;
-   int               m_winningTrades;
-   int               m_losingTrades;
-   double            m_totalProfit;
-   double            m_totalLoss;
-   double            m_profitFactor;
+   // Portfolio parameters
+   double            m_initialBalance;    // Initial account balance
+   double            m_maxDrawdown;       // Maximum allowed drawdown in percentage
+   double            m_maxRiskPerTrade;   // Maximum risk per trade in percentage
+   double            m_maxDailyLoss;      // Maximum daily loss in percentage
    
-   // Daily statistics
-   double            m_dailyProfit;
-   datetime          m_lastDayChecked;
-
+   // Portfolio tracking
+   double            m_currentBalance;    // Current account balance
+   double            m_currentEquity;     // Current account equity
+   double            m_highWaterMark;     // Highest account equity
+   double            m_totalProfit;       // Total profit
+   double            m_totalLoss;         // Total loss
+   double            m_dailyProfit;       // Daily profit
+   double            m_dailyLoss;         // Daily loss
+   
+   // Consistency tracking
+   double            m_winRate;           // Win rate percentage
+   double            m_profitFactor;      // Profit factor
+   double            m_averageWin;        // Average winning trade
+   double            m_averageLoss;       // Average losing trade
+   
+   // Log historical trades
+   CArrayObj         m_tradeHistory;      // Trade history
+   
+   // Last reset time
+   datetime          m_lastDailyReset;    // Last daily stats reset time
+   
+   // Private methods
+   void              CalculateStatistics();
+   void              ResetDailyStats();
+   
 public:
                      CSVPortfolio();
-                     ~CSVPortfolio();
+                    ~CSVPortfolio();
    
-   // Core functionality
+   // Initialization and update
    bool              Initialize();
    bool              Update();
-   bool              UpdateDailyStats();
-   bool              UpdateDrawdownStats();
-   int               CountOpenPositions();
-   bool              UpdateTradeStatistics();
    
-   // Risk management calculations
-   double            CalculateLotSizeFromRisk(string symbol, double riskPercent, double stopLossPoints);
-   double            GetRiskAmountForLotSize(string symbol, double lotSize, double stopLossPoints);
-   double            GetStopLossAmount(string symbol, double lotSize, double stopLossPoints);
-   double            GetPipValue(string symbol);
+   // Portfolio state
+   double            GetAccountBalance() const { return m_currentBalance; }
+   double            GetAccountEquity() const { return m_currentEquity; }
+   double            GetHighWaterMark() const { return m_highWaterMark; }
+   double            GetCurrentDrawdown() const;
+   double            GetCurrentDrawdownPercent() const;
    
-   // Getters for statistics
-   double            GetDrawdown() const { return m_drawdown; }
-   double            GetMaxDrawdown() const { return m_maxDrawdown; }
-   double            GetProfitFactor() const { return m_profitFactor; }
-   int               GetTotalTrades() const { return m_totalTrades; }
-   int               GetWinningTrades() const { return m_winningTrades; }
-   int               GetLosingTrades() const { return m_losingTrades; }
+   // Risk management
+   double            GetAvailableRiskAmount() const;
+   double            GetMaxPositionSize(string symbol, double entryPrice, double stopLoss) const;
+   bool              IsRiskAcceptable(double riskAmount) const;
+   bool              IsDailyLossLimitReached() const;
+   bool              IsDrawdownLimitReached() const;
+   
+   // Trade tracking
+   void              AddTradeResult(double profit, double commission = 0.0, double swap = 0.0);
+   double            GetTotalProfit() const { return m_totalProfit; }
+   double            GetTotalLoss() const { return m_totalLoss; }
+   double            GetNetProfit() const { return m_totalProfit - m_totalLoss; }
    double            GetDailyProfit() const { return m_dailyProfit; }
+   double            GetDailyLoss() const { return m_dailyLoss; }
+   double            GetDailyNetProfit() const { return m_dailyProfit - m_dailyLoss; }
+   
+   // Performance metrics
+   double            GetWinRate() const { return m_winRate; }
+   double            GetProfitFactor() const { return m_profitFactor; }
+   double            GetAverageWin() const { return m_averageWin; }
+   double            GetAverageLoss() const { return m_averageLoss; }
+   double            GetRiskRewardRatio() const;
+   
+   // Risk settings
+   void              SetMaxDrawdown(double maxDrawdown) { m_maxDrawdown = maxDrawdown; }
+   void              SetMaxRiskPerTrade(double maxRisk) { m_maxRiskPerTrade = maxRisk; }
+   void              SetMaxDailyLoss(double maxLoss) { m_maxDailyLoss = maxLoss; }
+   
+   // Account information
+   double            GetFreeMargin() const { return m_accountInfo.FreeMargin(); }
+   double            GetMargin() const { return m_accountInfo.Margin(); }
+   double            GetMarginLevel() const { return m_accountInfo.MarginLevel(); }
+   ENUM_ACCOUNT_MARGIN_MODE GetMarginMode() const { return (ENUM_ACCOUNT_MARGIN_MODE)m_accountInfo.MarginMode(); }
+   ENUM_ACCOUNT_TRADE_MODE GetTradeMode() const { return (ENUM_ACCOUNT_TRADE_MODE)m_accountInfo.TradeMode(); }
+   string            GetCurrency() const { return m_accountInfo.Currency(); }
+   double            GetLeverage() const { return m_accountInfo.Leverage(); }
 };
 
 //+------------------------------------------------------------------+
@@ -67,21 +108,29 @@ public:
 //+------------------------------------------------------------------+
 CSVPortfolio::CSVPortfolio()
 {
-   m_accountBalance = 0.0;
-   m_accountEquity = 0.0;
-   m_drawdown = 0.0;
-   m_maxDrawdown = 0.0;
-   m_lastUpdateTime = 0;
+   // Initialize parameters
+   m_initialBalance = 0.0;
+   m_maxDrawdown = 20.0;      // 20% maximum drawdown
+   m_maxRiskPerTrade = 2.0;   // 2% maximum risk per trade
+   m_maxDailyLoss = 5.0;      // 5% maximum daily loss
    
-   m_totalTrades = 0;
-   m_winningTrades = 0;
-   m_losingTrades = 0;
+   // Initialize tracking
+   m_currentBalance = 0.0;
+   m_currentEquity = 0.0;
+   m_highWaterMark = 0.0;
    m_totalProfit = 0.0;
    m_totalLoss = 0.0;
-   m_profitFactor = 0.0;
-   
    m_dailyProfit = 0.0;
-   m_lastDayChecked = 0;
+   m_dailyLoss = 0.0;
+   
+   // Initialize performance metrics
+   m_winRate = 0.0;
+   m_profitFactor = 0.0;
+   m_averageWin = 0.0;
+   m_averageLoss = 0.0;
+   
+   // Initialize reset time
+   m_lastDailyReset = 0;
 }
 
 //+------------------------------------------------------------------+
@@ -89,7 +138,8 @@ CSVPortfolio::CSVPortfolio()
 //+------------------------------------------------------------------+
 CSVPortfolio::~CSVPortfolio()
 {
-   // Clean up resources if any
+   // Clean up trade history
+   m_tradeHistory.Clear();
 }
 
 //+------------------------------------------------------------------+
@@ -97,248 +147,252 @@ CSVPortfolio::~CSVPortfolio()
 //+------------------------------------------------------------------+
 bool CSVPortfolio::Initialize()
 {
-   m_accountBalance = AccountBalance();
-   m_accountEquity = AccountEquity();
-   m_lastUpdateTime = TimeCurrent();
-   m_lastDayChecked = TimeCurrent();
+   // Get initial account balance and equity
+   m_initialBalance = m_accountInfo.Balance();
+   m_currentBalance = m_initialBalance;
+   m_currentEquity = m_accountInfo.Equity();
+   m_highWaterMark = m_currentEquity;
    
-   // Initialize trade statistics from history
-   UpdateTradeStatistics();
+   // Set last reset time to current day start
+   MqlDateTime dt;
+   TimeCurrent(dt);
+   dt.hour = 0;
+   dt.min = 0;
+   dt.sec = 0;
+   m_lastDailyReset = StructToTime(dt);
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Update portfolio data                                            |
+//| Update portfolio state                                           |
 //+------------------------------------------------------------------+
 bool CSVPortfolio::Update()
 {
-   // Update account metrics
-   m_accountBalance = AccountBalance();
-   m_accountEquity = AccountEquity();
+   // Update current balance and equity
+   m_currentBalance = m_accountInfo.Balance();
+   m_currentEquity = m_accountInfo.Equity();
+   
+   // Update high water mark if equity increased
+   if(m_currentEquity > m_highWaterMark)
+      m_highWaterMark = m_currentEquity;
+   
+   // Check if day changed and reset daily stats if needed
+   MqlDateTime dt;
+   TimeCurrent(dt);
+   dt.hour = 0;
+   dt.min = 0;
+   dt.sec = 0;
+   datetime currentDayStart = StructToTime(dt);
+   
+   if(currentDayStart > m_lastDailyReset)
+   {
+      ResetDailyStats();
+      m_lastDailyReset = currentDayStart;
+   }
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Get current drawdown                                             |
+//+------------------------------------------------------------------+
+double CSVPortfolio::GetCurrentDrawdown() const
+{
+   return m_highWaterMark - m_currentEquity;
+}
+
+//+------------------------------------------------------------------+
+//| Get current drawdown as a percentage                             |
+//+------------------------------------------------------------------+
+double CSVPortfolio::GetCurrentDrawdownPercent() const
+{
+   if(m_highWaterMark <= 0.0)
+      return 0.0;
+      
+   return (m_highWaterMark - m_currentEquity) / m_highWaterMark * 100.0;
+}
+
+//+------------------------------------------------------------------+
+//| Get available risk amount based on max risk per trade            |
+//+------------------------------------------------------------------+
+double CSVPortfolio::GetAvailableRiskAmount() const
+{
+   return m_currentEquity * m_maxRiskPerTrade / 100.0;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate max position size based on risk parameters             |
+//+------------------------------------------------------------------+
+double CSVPortfolio::GetMaxPositionSize(string symbol, double entryPrice, double stopLoss) const
+{
+   // If stop loss is invalid, return 0
+   if(stopLoss <= 0.0 || entryPrice <= 0.0 || MathAbs(entryPrice - stopLoss) < SymbolInfoDouble(symbol, SYMBOL_POINT))
+      return 0.0;
+   
+   // Calculate available risk amount
+   double riskAmount = GetAvailableRiskAmount();
+   
+   // Get symbol info
+   double tickSize = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_SIZE);
+   double tickValue = SymbolInfoDouble(symbol, SYMBOL_TRADE_TICK_VALUE);
+   double pointValue = tickValue / tickSize;
+   
+   // Calculate stop loss distance in points
+   double slDistance = MathAbs(entryPrice - stopLoss) / SymbolInfoDouble(symbol, SYMBOL_POINT);
+   
+   // Calculate lot size
+   double lotSize = riskAmount / (slDistance * pointValue);
+   
+   // Normalize lot size
+   double minVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MIN);
+   double maxVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_MAX);
+   double stepVolume = SymbolInfoDouble(symbol, SYMBOL_VOLUME_STEP);
+   
+   lotSize = MathMax(minVolume, lotSize);
+   lotSize = MathMin(maxVolume, lotSize);
+   lotSize = MathRound(lotSize / stepVolume) * stepVolume;
+   
+   return NormalizeDouble(lotSize, 2);
+}
+
+//+------------------------------------------------------------------+
+//| Check if risk amount is acceptable                               |
+//+------------------------------------------------------------------+
+bool CSVPortfolio::IsRiskAcceptable(double riskAmount) const
+{
+   // Check if risk exceeds max risk per trade
+   double maxRisk = m_currentEquity * m_maxRiskPerTrade / 100.0;
+   if(riskAmount > maxRisk)
+      return false;
+      
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Check if daily loss limit is reached                             |
+//+------------------------------------------------------------------+
+bool CSVPortfolio::IsDailyLossLimitReached() const
+{
+   // Calculate daily loss percentage
+   double dailyLossPercent = m_dailyLoss / m_initialBalance * 100.0;
+   
+   // Check if daily loss exceeds limit
+   return (dailyLossPercent >= m_maxDailyLoss);
+}
+
+//+------------------------------------------------------------------+
+//| Check if drawdown limit is reached                               |
+//+------------------------------------------------------------------+
+bool CSVPortfolio::IsDrawdownLimitReached() const
+{
+   // Check if current drawdown exceeds limit
+   return (GetCurrentDrawdownPercent() >= m_maxDrawdown);
+}
+
+//+------------------------------------------------------------------+
+//| Add trade result to tracking                                     |
+//+------------------------------------------------------------------+
+void CSVPortfolio::AddTradeResult(double profit, double commission = 0.0, double swap = 0.0)
+{
+   // Calculate net profit
+   double netProfit = profit + commission + swap;
+   
+   // Update profit/loss tracking
+   if(netProfit > 0.0)
+   {
+      m_totalProfit += netProfit;
+      m_dailyProfit += netProfit;
+   }
+   else
+   {
+      m_totalLoss += MathAbs(netProfit);
+      m_dailyLoss += MathAbs(netProfit);
+   }
    
    // Update statistics
-   UpdateDrawdownStats();
-   
-   // Check if we need to update daily stats (day change)
-   datetime currentTime = TimeCurrent();
-   MqlDateTime dtCurrent, dtLast;
-   TimeToStruct(currentTime, dtCurrent);
-   TimeToStruct(m_lastUpdateTime, dtLast);
-   
-   if(dtCurrent.day != dtLast.day || dtCurrent.mon != dtLast.mon)
-   {
-      UpdateDailyStats();
-   }
-   
-   m_lastUpdateTime = currentTime;
-   
-   return true;
+   CalculateStatistics();
 }
 
 //+------------------------------------------------------------------+
-//| Update daily statistics                                          |
+//| Calculate performance statistics                                 |
 //+------------------------------------------------------------------+
-bool CSVPortfolio::UpdateDailyStats()
+void CSVPortfolio::CalculateStatistics()
 {
-   // Reset daily profit and update last day checked
-   m_dailyProfit = 0.0;
-   m_lastDayChecked = TimeCurrent();
+   // Calculate win rate and profit factor from account history
+   int totalTrades = 0;
+   int winningTrades = 0;
+   double grossProfit = 0.0;
+   double grossLoss = 0.0;
+   double totalWinAmount = 0.0;
+   double totalLossAmount = 0.0;
    
-   // Calculate today's profit from history
-   datetime todayStart = StringToTime(TimeToString(TimeCurrent(), TIME_DATE));
-   
-   for(int i = 0; i < OrdersHistoryTotal(); i++)
+   // Select all history for the current account
+   if(HistorySelect(0, TimeCurrent()))
    {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
-      {
-         // Check if the order closed today
-         if(OrderCloseTime() >= todayStart)
-         {
-            // Only count orders with our magic number
-            if(OrderMagicNumber() == 12345) // Should match your system's magic number
-            {
-               m_dailyProfit += OrderProfit() + OrderSwap() + OrderCommission();
-            }
-         }
-      }
-   }
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Update drawdown statistics                                       |
-//+------------------------------------------------------------------+
-bool CSVPortfolio::UpdateDrawdownStats()
-{
-   // Calculate current drawdown
-   if(m_accountBalance > 0)
-   {
-      m_drawdown = (m_accountBalance - m_accountEquity) / m_accountBalance * 100.0;
+      // Process all deals in the history
+      int totalDeals = HistoryDealsTotal();
       
-      // Update max drawdown if current drawdown is higher
-      if(m_drawdown > m_maxDrawdown)
+      for(int i = 0; i < totalDeals; i++)
       {
-         m_maxDrawdown = m_drawdown;
-      }
-   }
-   
-   return true;
-}
-
-//+------------------------------------------------------------------+
-//| Count the number of currently open positions                     |
-//+------------------------------------------------------------------+
-int CSVPortfolio::CountOpenPositions()
-{
-   int count = 0;
-   
-   for(int i = 0; i < OrdersTotal(); i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_TRADES))
-      {
-         if(OrderMagicNumber() == 12345) // Replace with your system's magic number
+         ulong dealTicket = HistoryDealGetTicket(i);
+         
+         // Skip if deal is not found
+         if(dealTicket == 0)
+            continue;
+         
+         // Process only closed positions
+         if(HistoryDealGetInteger(dealTicket, DEAL_ENTRY) == DEAL_ENTRY_OUT)
          {
-            count++;
-         }
-      }
-   }
-   
-   return count;
-}
-
-//+------------------------------------------------------------------+
-//| Update trade statistics                                          |
-//+------------------------------------------------------------------+
-bool CSVPortfolio::UpdateTradeStatistics()
-{
-   // Reset statistics
-   m_totalTrades = 0;
-   m_winningTrades = 0;
-   m_losingTrades = 0;
-   m_totalProfit = 0.0;
-   m_totalLoss = 0.0;
-   
-   // Iterate through history
-   int totalOrders = OrdersHistoryTotal();
-   
-   for(int i = 0; i < totalOrders; i++)
-   {
-      if(OrderSelect(i, SELECT_BY_POS, MODE_HISTORY))
-      {
-         // Check if the order belongs to our EA
-         if(OrderMagicNumber() == 12345) // Replace with your system's magic number
-         {
-            double orderResult = OrderProfit() + OrderSwap() + OrderCommission();
+            double dealProfit = HistoryDealGetDouble(dealTicket, DEAL_PROFIT);
+            double dealCommission = HistoryDealGetDouble(dealTicket, DEAL_COMMISSION);
+            double dealSwap = HistoryDealGetDouble(dealTicket, DEAL_SWAP);
+            double netProfit = dealProfit + dealCommission + dealSwap;
             
-            m_totalTrades++;
+            totalTrades++;
             
-            // Check if the trade was profitable
-            if(orderResult > 0)
+            if(netProfit > 0.0)
             {
-               m_winningTrades++;
-               m_totalProfit += orderResult;
+               winningTrades++;
+               grossProfit += netProfit;
+               totalWinAmount += netProfit;
             }
             else
             {
-               m_losingTrades++;
-               m_totalLoss += orderResult; // OrderProfit() is negative here
+               grossLoss += MathAbs(netProfit);
+               totalLossAmount += MathAbs(netProfit);
             }
          }
       }
    }
    
+   // Calculate win rate
+   m_winRate = totalTrades > 0 ? (double)winningTrades / totalTrades * 100.0 : 0.0;
+   
    // Calculate profit factor
-   if(m_totalLoss < 0.0 && MathAbs(m_totalLoss) > 0.0001)
-   {
-      m_profitFactor = MathAbs(m_totalProfit / m_totalLoss);
-   }
-   else if(m_totalProfit > 0 && m_totalLoss == 0)
-   {
-      // All trades are winners
-      m_profitFactor = 100.0; // Arbitrarily high value
-   }
-   else
-   {
-      m_profitFactor = 0.0;
-   }
+   m_profitFactor = grossLoss > 0.0 ? grossProfit / grossLoss : 0.0;
    
-   return true;
+   // Calculate average win and loss
+   m_averageWin = winningTrades > 0 ? totalWinAmount / winningTrades : 0.0;
+   m_averageLoss = (totalTrades - winningTrades) > 0 ? totalLossAmount / (totalTrades - winningTrades) : 0.0;
 }
 
 //+------------------------------------------------------------------+
-//| Calculate lot size based on risk percentage and stop loss points  |
+//| Reset daily statistics                                           |
 //+------------------------------------------------------------------+
-double CSVPortfolio::CalculateLotSizeFromRisk(string symbol, double riskPercent, double stopLossPoints)
+void CSVPortfolio::ResetDailyStats()
 {
-   if(stopLossPoints <= 0.0 || riskPercent <= 0.0)
-      return 0.0;
-   
-   double balance = AccountBalance();
-   double riskAmount = balance * riskPercent / 100.0;
-   double pipValue = GetPipValue(symbol);
-   
-   if(pipValue <= 0.0)
-      return 0.0;
-   
-   double lotSize = riskAmount / (stopLossPoints * pipValue);
-   
-   // Normalize lot size based on broker constraints
-   double minLot = MarketInfo(symbol, MODE_MINLOT);
-   double maxLot = MarketInfo(symbol, MODE_MAXLOT);
-   double lotStep = MarketInfo(symbol, MODE_LOTSTEP);
-   
-   lotSize = MathMax(minLot, MathMin(maxLot, NormalizeDouble(lotSize / lotStep, 0) * lotStep));
-   
-   return lotSize;
+   m_dailyProfit = 0.0;
+   m_dailyLoss = 0.0;
 }
 
 //+------------------------------------------------------------------+
-//| Calculate risk amount for a given lot size and stop loss points   |
+//| Get risk/reward ratio                                            |
 //+------------------------------------------------------------------+
-double CSVPortfolio::GetRiskAmountForLotSize(string symbol, double lotSize, double stopLossPoints)
+double CSVPortfolio::GetRiskRewardRatio() const
 {
-   if(stopLossPoints <= 0.0 || lotSize <= 0.0)
+   if(m_averageLoss <= 0.0)
       return 0.0;
       
-   double pipValue = GetPipValue(symbol);
-   
-   return lotSize * stopLossPoints * pipValue;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate stop loss amount for a given lot size and points        |
-//+------------------------------------------------------------------+
-double CSVPortfolio::GetStopLossAmount(string symbol, double lotSize, double stopLossPoints)
-{
-   if(stopLossPoints <= 0.0 || lotSize <= 0.0)
-      return 0.0;
-      
-   double pipValue = GetPipValue(symbol);
-   
-   return lotSize * stopLossPoints * pipValue;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate pip value for a given symbol                           |
-//+------------------------------------------------------------------+
-double CSVPortfolio::GetPipValue(string symbol)
-{
-   double tickSize = MarketInfo(symbol, MODE_TICKSIZE);
-   double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
-   double point = MarketInfo(symbol, MODE_POINT);
-   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
-   
-   // Determine pip size based on digits
-   double pipSize;
-   if(digits == 3 || digits == 5)
-      pipSize = 0.0001; // 5 digit broker (JPY pairs with 3 digits)
-   else
-      pipSize = 0.01;   // 4 digit broker (JPY pairs with 2 digits)
-   
-   // Calculate pip value
-   double pipValue = tickValue * (pipSize / tickSize);
-   
-   return pipValue;
+   return m_averageWin / m_averageLoss;
 }
