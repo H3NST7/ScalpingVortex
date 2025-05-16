@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                                SVPortfolio.mqh |
+//|                                                SVOptimizer.mqh |
 //|                                           Copyright 2025, H3nst7 |
 //|                                           https://www.h3nst7.com |
 //+------------------------------------------------------------------+
@@ -8,493 +8,975 @@
 #property strict
 
 #include "SVUtils.mqh"
+#include "SVPortfolio.mqh"
 
-// Portfolio/Account management class
-class CSVPortfolio
+// Structure to hold parameter set
+struct SVParameterSet
+{
+   string strategyID;         // Strategy ID this parameter set belongs to
+   double entryThreshold;     // Entry threshold
+   double exitThreshold;      // Exit threshold
+   double atrMultiplierSL;    // ATR multiplier for stop loss
+   double atrMultiplierTP;    // ATR multiplier for take profit
+   int momentumPeriod;        // Momentum period
+   int emaPeriodFast;         // Fast EMA period
+   int emaPeriodSlow;         // Slow EMA period
+   double riskMultiplier;     // Risk multiplier
+   datetime lastUpdated;      // Last time this parameter set was updated
+   
+   void Clear()
+   {
+      strategyID = "";
+      entryThreshold = 0.0;
+      exitThreshold = 0.0;
+      atrMultiplierSL = 0.0;
+      atrMultiplierTP = 0.0;
+      momentumPeriod = 0;
+      emaPeriodFast = 0;
+      emaPeriodSlow = 0;
+      riskMultiplier = 0.0;
+      lastUpdated = 0;
+   }
+};
+
+// Structure to hold performance metrics
+struct SVPerformanceMetrics
+{
+   string strategyID;         // Strategy ID this metrics belongs to
+   int totalTrades;           // Total number of trades
+   int winningTrades;         // Number of winning trades
+   int losingTrades;          // Number of losing trades
+   double grossProfit;        // Gross profit
+   double grossLoss;          // Gross loss
+   double netProfit;          // Net profit
+   double winRate;            // Win rate in percentage
+   double profitFactor;       // Profit factor
+   double averageWin;         // Average winning trade
+   double averageLoss;        // Average losing trade
+   double expectancy;         // Expectancy (average profit/loss per trade)
+   double maxDrawdown;        // Maximum drawdown
+   double sharpeRatio;        // Sharpe ratio
+   datetime lastUpdated;      // Last time this metrics was updated
+   
+   void Clear()
+   {
+      strategyID = "";
+      totalTrades = 0;
+      winningTrades = 0;
+      losingTrades = 0;
+      grossProfit = 0.0;
+      grossLoss = 0.0;
+      netProfit = 0.0;
+      winRate = 0.0;
+      profitFactor = 0.0;
+      averageWin = 0.0;
+      averageLoss = 0.0;
+      expectancy = 0.0;
+      maxDrawdown = 0.0;
+      sharpeRatio = 0.0;
+      lastUpdated = 0;
+   }
+};
+
+// Optimizer class
+class CSVOptimizer
 {
 private:
-   // Account tracking
-   ulong m_magicNumber;            // Magic number for trades
-   double m_initialBalance;        // Initial account balance
-   double m_balance;               // Current account balance
-   double m_equity;                // Current account equity
-   double m_margin;                // Current used margin
-   double m_freeMargin;            // Current free margin
-   double m_marginLevel;           // Current margin level
+   // Parameter sets for each strategy
+   SVParameterSet m_paramSets[];
+   int m_paramSetsCount;
    
-   // Performance tracking
-   double m_peakBalance;           // Peak account balance
-   double m_peakEquity;            // Peak account equity
-   double m_currentDrawdown;       // Current drawdown amount
-   double m_maxDrawdown;           // Maximum drawdown amount
-   double m_currentDrawdownPercent;// Current drawdown percentage
-   double m_maxDrawdownPercent;    // Maximum drawdown percentage
+   // Performance metrics for each strategy
+   SVPerformanceMetrics m_perfMetrics[];
+   int m_perfMetricsCount;
    
-   double m_dailyStartBalance;     // Balance at start of day
-   double m_dailyHighBalance;      // Highest balance of the day
-   double m_dailyLowBalance;       // Lowest balance of the day
-   double m_dailyDrawdown;         // Maximum daily drawdown amount
-   double m_dailyDrawdownPercent;  // Maximum daily drawdown percentage
-   double m_dayNetProfit;          // Net profit for the day
+   // Trade data logging
+   bool m_logTradeData;
+   int m_logFile;
+   string m_logFileName;
    
-   // Position tracking
-   int m_totalPositions;           // Total open positions
-   int m_longPositions;            // Open long positions
-   int m_shortPositions;           // Open short positions
-   
-   // Trade statistics
-   int m_totalTrades;              // Total closed trades
-   int m_winningTrades;            // Winning trades
-   int m_losingTrades;             // Losing trades
-   double m_grossProfit;           // Gross profit
-   double m_grossLoss;             // Gross loss
-   double m_netProfit;             // Net profit
-   double m_expectancy;            // Expected profit per trade
-   double m_profitFactor;          // Profit factor
-   double m_averageProfit;         // Average profit per trade
-   double m_averageLoss;           // Average loss per trade
-   double m_winRate;               // Win percentage
-   
-   // Time tracking
-   datetime m_lastUpdateTime;      // Last update time
-   int m_dayOfYear;                // Current day of year
+   // Portfolio reference
+   CSVPortfolio* m_portfolio;
    
    // Helper methods
-   void UpdateDailyStats();
-   void UpdateDrawdownStats();
+   bool LoadParameterSets();
+   bool SaveParameterSets();
+   bool LoadPerformanceMetrics();
+   bool SavePerformanceMetrics();
+   
+   void InitializeTradeLog();
+   void FinalizeTradeLog();
+   
+   double CalculateExpectancy(string strategyID);
+   double CalculateSharpeRatio(string strategyID);
+   double CalculateCustomFitnessValue();
    
 public:
    // Constructor and destructor
-   CSVPortfolio();
-   ~CSVPortfolio();
+   CSVOptimizer();
+   ~CSVOptimizer();
    
    // Initialization
-   bool Initialize(ulong magicNumber);
+   bool Initialize(CSVPortfolio* portfolio);
    
-   // Update portfolio status
-   void Update();
+   // Parameter management
+   bool AddParameterSet(SVParameterSet &paramSet);
+   bool UpdateParameterSet(string strategyID, SVParameterSet &newParamSet);
+   bool GetParameterSet(string strategyID, SVParameterSet &paramSet);
    
-   // Account information getters
-   ulong GetMagicNumber() const { return m_magicNumber; }
-   double GetBalance() const { return m_balance; }
-   double GetEquity() const { return m_equity; }
-   double GetMargin() const { return m_margin; }
-   double GetFreeMargin() const { return m_freeMargin; }
-   double GetMarginLevel() const { return m_marginLevel; }
+   // Performance metrics
+   bool AddPerformanceMetrics(SVPerformanceMetrics &metrics);
+   bool UpdatePerformanceMetrics(string strategyID, SVPerformanceMetrics &newMetrics);
+   bool GetPerformanceMetrics(string strategyID, SVPerformanceMetrics &metrics);
    
-   // Performance metrics getters
-   double GetPeakBalance() const { return m_peakBalance; }
-   double GetPeakEquity() const { return m_peakEquity; }
-   double GetCurrentDrawdown() const { return m_currentDrawdown; }
-   double GetMaxDrawdown() const { return m_maxDrawdown; }
-   double GetCurrentDrawdownPercent() const { return m_currentDrawdownPercent; }
-   double GetMaxDrawdownPercent() const { return m_maxDrawdownPercent; }
+   // Adaptive methods
+   double GetAdaptiveRiskMultiplier(string strategyID);
+   double GetAdaptiveATRMultiplier(string strategyID, bool isStopLoss);
+   int GetAdaptivePeriod(string strategyID, string periodName);
    
-   double GetDailyStartBalance() const { return m_dailyStartBalance; }
-   double GetDailyHighBalance() const { return m_dailyHighBalance; }
-   double GetDailyLowBalance() const { return m_dailyLowBalance; }
-   double GetDailyDrawdown() const { return m_dailyDrawdown; }
-   double GetDailyDrawdownPercent() const { return m_dailyDrawdownPercent; }
-   double GetDayNetProfit() const { return m_dayNetProfit; }
+   // Trade logging
+   void LogTradeData(ulong ticket, ENUM_DEAL_TYPE dealType, double lots, 
+                     double openPrice, double closePrice, double profit, 
+                     string strategyID, datetime openTime, datetime closeTime);
    
-   // Position tracking
-   int GetOpenPositionsCount() const { return m_totalPositions; }
-   int GetLongPositionsCount() const { return m_longPositions; }
-   int GetShortPositionsCount() const { return m_shortPositions; }
-   
-   // Trade statistics getters
-   int GetTotalTrades() const { return m_totalTrades; }
-   int GetWinningTrades() const { return m_winningTrades; }
-   int GetLosingTrades() const { return m_losingTrades; }
-   double GetGrossProfit() const { return m_grossProfit; }
-   double GetGrossLoss() const { return m_grossLoss; }
-   double GetNetProfit() const { return m_netProfit; }
-   double GetExpectancy() const { return m_expectancy; }
-   double GetProfitFactor() const { return m_profitFactor; }
-   double GetAverageProfit() const { return m_averageProfit; }
-   double GetAverageLoss() const { return m_averageLoss; }
-   double GetWinRate() const { return m_winRate; }
-   
-   // Risk calculation utilities
-   double CalculateLotSizeFromRisk(double riskAmount, double stopLossPips);
-   double GetRiskAmountForLotSize(double lotSize, double stopLossPips);
-   double GetStopLossAmount(ulong ticket);
-   double GetPipValue(double lots);
+   // Strategy tester interface
+   double CalculateCustomFitness();
 };
 
 //+------------------------------------------------------------------+
 //| Constructor                                                      |
 //+------------------------------------------------------------------+
-CSVPortfolio::CSVPortfolio()
+CSVOptimizer::CSVOptimizer()
 {
-   m_magicNumber = 0;
-   m_initialBalance = 0.0;
-   m_balance = 0.0;
-   m_equity = 0.0;
-   m_margin = 0.0;
-   m_freeMargin = 0.0;
-   m_marginLevel = 0.0;
-   
-   m_peakBalance = 0.0;
-   m_peakEquity = 0.0;
-   m_currentDrawdown = 0.0;
-   m_maxDrawdown = 0.0;
-   m_currentDrawdownPercent = 0.0;
-   m_maxDrawdownPercent = 0.0;
-   
-   m_dailyStartBalance = 0.0;
-   m_dailyHighBalance = 0.0;
-   m_dailyLowBalance = 0.0;
-   m_dailyDrawdown = 0.0;
-   m_dailyDrawdownPercent = 0.0;
-   m_dayNetProfit = 0.0;
-   
-   m_totalPositions = 0;
-   m_longPositions = 0;
-   m_shortPositions = 0;
-   
-   m_totalTrades = 0;
-   m_winningTrades = 0;
-   m_losingTrades = 0;
-   m_grossProfit = 0.0;
-   m_grossLoss = 0.0;
-   m_netProfit = 0.0;
-   m_expectancy = 0.0;
-   m_profitFactor = 0.0;
-   m_averageProfit = 0.0;
-   m_averageLoss = 0.0;
-   m_winRate = 0.0;
-   
-   m_lastUpdateTime = 0;
-   m_dayOfYear = 0;
+   m_paramSetsCount = 0;
+   m_perfMetricsCount = 0;
+   m_logTradeData = false;
+   m_logFile = INVALID_HANDLE;
+   m_logFileName = "";
+   m_portfolio = NULL;
 }
 
 //+------------------------------------------------------------------+
 //| Destructor                                                       |
 //+------------------------------------------------------------------+
-CSVPortfolio::~CSVPortfolio()
+CSVOptimizer::~CSVOptimizer()
 {
-   // No dynamic memory to clean up
+   // Save parameter sets and performance metrics
+   SaveParameterSets();
+   SavePerformanceMetrics();
+   
+   // Close log file if open
+   FinalizeTradeLog();
 }
 
 //+------------------------------------------------------------------+
-//| Initialize portfolio with parameters                             |
+//| Initialize optimizer with parameters                             |
 //+------------------------------------------------------------------+
-bool CSVPortfolio::Initialize(ulong magicNumber)
+bool CSVOptimizer::Initialize(CSVPortfolio* portfolio)
 {
-   m_magicNumber = magicNumber;
+   if(portfolio == NULL) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Portfolio reference is NULL");
+      return false;
+   }
    
-   // Get initial account state
-   m_initialBalance = AccountInfoDouble(ACCOUNT_BALANCE);
-   m_balance = m_initialBalance;
-   m_equity = AccountInfoDouble(ACCOUNT_EQUITY);
-   m_margin = AccountInfoDouble(ACCOUNT_MARGIN);
-   m_freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-   m_marginLevel = AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
+   m_portfolio = portfolio;
    
-   m_peakBalance = m_balance;
-   m_peakEquity = m_equity;
+   // Load parameter sets and performance metrics
+   if(!LoadParameterSets()) {
+      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Failed to load parameter sets, using defaults");
+   }
    
-   m_dailyStartBalance = m_balance;
-   m_dailyHighBalance = m_balance;
-   m_dailyLowBalance = m_balance;
+   if(!LoadPerformanceMetrics()) {
+      CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Failed to load performance metrics, using defaults");
+   }
    
-   m_lastUpdateTime = TimeCurrent();
-   m_dayOfYear = TimeDay(m_lastUpdateTime) + TimeMonth(m_lastUpdateTime) * 31;
+   // Initialize trade log if in tester
+   if(MQLInfoInteger(MQL_TESTER)) {
+      InitializeTradeLog();
+   }
    
-   // Count existing positions for this EA
-   CountOpenPositions();
-   
-   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Portfolio initialized with magic number: " + 
-                IntegerToString(m_magicNumber) + ", balance: " + DoubleToString(m_balance, 2));
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Optimizer initialized with " + 
+                IntegerToString(m_paramSetsCount) + " parameter sets and " + 
+                IntegerToString(m_perfMetricsCount) + " performance metrics");
    
    return true;
 }
 
 //+------------------------------------------------------------------+
-//| Update portfolio state                                           |
+//| Add a new parameter set                                          |
 //+------------------------------------------------------------------+
-void CSVPortfolio::Update()
+bool CSVOptimizer::AddParameterSet(SVParameterSet &paramSet)
 {
-   // Get current account state
-   m_balance = AccountInfoDouble(ACCOUNT_BALANCE);
-   m_equity = AccountInfoDouble(ACCOUNT_EQUITY);
-   m_margin = AccountInfoDouble(ACCOUNT_MARGIN);
-   m_freeMargin = AccountInfoDouble(ACCOUNT_MARGIN_FREE);
-   m_marginLevel = AccountInfoDouble(ACCOUNT_MARGIN_LEVEL);
-   
-   // Update drawdown statistics
-   UpdateDrawdownStats();
-   
-   // Check if day has changed
-   datetime currentTime = TimeCurrent();
-   int currentDayOfYear = TimeDay(currentTime) + TimeMonth(currentTime) * 31;
-   
-   if(currentDayOfYear != m_dayOfYear) {
-      // Day has changed, reset daily statistics
-      m_dailyStartBalance = m_balance;
-      m_dailyHighBalance = m_balance;
-      m_dailyLowBalance = m_balance;
-      m_dailyDrawdown = 0.0;
-      m_dailyDrawdownPercent = 0.0;
-      m_dayNetProfit = 0.0;
-      
-      m_dayOfYear = currentDayOfYear;
-      
-      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "New trading day detected, resetting daily statistics");
-   }
-   
-   // Update daily statistics
-   UpdateDailyStats();
-   
-   // Count open positions
-   CountOpenPositions();
-   
-   // Update trade statistics
-   UpdateTradeStatistics();
-   
-   m_lastUpdateTime = currentTime;
-}
-
-//+------------------------------------------------------------------+
-//| Update daily statistics                                          |
-//+------------------------------------------------------------------+
-void CSVPortfolio::UpdateDailyStats()
-{
-   // Update daily high/low
-   if(m_balance > m_dailyHighBalance) {
-      m_dailyHighBalance = m_balance;
-   }
-   
-   if(m_balance < m_dailyLowBalance) {
-      m_dailyLowBalance = m_balance;
-   }
-   
-   // Calculate daily drawdown
-   double dailyDrawdown = m_dailyHighBalance - m_balance;
-   double dailyDrawdownPercent = (m_dailyHighBalance > 0.0) ? 
-                               (dailyDrawdown / m_dailyHighBalance) * 100.0 : 0.0;
-   
-   if(dailyDrawdown > m_dailyDrawdown) {
-      m_dailyDrawdown = dailyDrawdown;
-      m_dailyDrawdownPercent = dailyDrawdownPercent;
-   }
-   
-   // Calculate day net profit
-   m_dayNetProfit = m_balance - m_dailyStartBalance;
-}
-
-//+------------------------------------------------------------------+
-//| Update drawdown statistics                                       |
-//+------------------------------------------------------------------+
-void CSVPortfolio::UpdateDrawdownStats()
-{
-   // Update peak values
-   if(m_balance > m_peakBalance) {
-      m_peakBalance = m_balance;
-   }
-   
-   if(m_equity > m_peakEquity) {
-      m_peakEquity = m_equity;
-   }
-   
-   // Calculate current drawdown
-   m_currentDrawdown = m_peakBalance - m_balance;
-   m_currentDrawdownPercent = (m_peakBalance > 0.0) ? 
-                             (m_currentDrawdown / m_peakBalance) * 100.0 : 0.0;
-   
-   // Update maximum drawdown
-   if(m_currentDrawdown > m_maxDrawdown) {
-      m_maxDrawdown = m_currentDrawdown;
-      m_maxDrawdownPercent = m_currentDrawdownPercent;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Count open positions for this EA                                 |
-//+------------------------------------------------------------------+
-void CSVPortfolio::CountOpenPositions()
-{
-   m_totalPositions = 0;
-   m_longPositions = 0;
-   m_shortPositions = 0;
-   
-   int total = PositionsTotal();
-   
-   for(int i = 0; i < total; i++) {
-      ulong ticket = PositionGetTicket(i);
-      
-      if(ticket <= 0) continue;
-      
-      // Check if position belongs to our EA
-      if(PositionSelectByTicket(ticket)) {
-         if(PositionGetInteger(POSITION_MAGIC) == m_magicNumber) {
-            m_totalPositions++;
-            
-            ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-            
-            if(posType == POSITION_TYPE_BUY) {
-               m_longPositions++;
-            } else if(posType == POSITION_TYPE_SELL) {
-               m_shortPositions++;
-            }
-         }
+   // Check if parameter set already exists
+   for(int i = 0; i < m_paramSetsCount; i++) {
+      if(m_paramSets[i].strategyID == paramSet.strategyID) {
+         // Update existing parameter set
+         return UpdateParameterSet(paramSet.strategyID, paramSet);
       }
    }
+   
+   // Add new parameter set
+   int newIndex = m_paramSetsCount;
+   m_paramSetsCount++;
+   ArrayResize(m_paramSets, m_paramSetsCount);
+   
+   m_paramSets[newIndex] = paramSet;
+   m_paramSets[newIndex].lastUpdated = TimeCurrent();
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Added parameter set for strategy: " + paramSet.strategyID);
+   
+   SaveParameterSets();
+   
+   return true;
 }
 
 //+------------------------------------------------------------------+
-//| Update trade statistics                                          |
+//| Update an existing parameter set                                 |
 //+------------------------------------------------------------------+
-void CSVPortfolio::UpdateTradeStatistics()
+bool CSVOptimizer::UpdateParameterSet(string strategyID, SVParameterSet &newParamSet)
 {
-   // In a real implementation, you would need to track trades over time
-   // This is a simplified version that just gathers history data
+   // Find parameter set by strategy ID
+   for(int i = 0; i < m_paramSetsCount; i++) {
+      if(m_paramSets[i].strategyID == strategyID) {
+         // Update parameter set
+         m_paramSets[i] = newParamSet;
+         m_paramSets[i].lastUpdated = TimeCurrent();
+         
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Updated parameter set for strategy: " + strategyID);
+         
+         SaveParameterSets();
+         
+         return true;
+      }
+   }
    
-   m_totalTrades = 0;
-   m_winningTrades = 0;
-   m_losingTrades = 0;
-   m_grossProfit = 0.0;
-   m_grossLoss = 0.0;
+   CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Parameter set not found for strategy: " + strategyID);
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Get a parameter set by strategy ID                               |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::GetParameterSet(string strategyID, SVParameterSet &paramSet)
+{
+   // Find parameter set by strategy ID
+   for(int i = 0; i < m_paramSetsCount; i++) {
+      if(m_paramSets[i].strategyID == strategyID) {
+         // Return parameter set
+         paramSet = m_paramSets[i];
+         return true;
+      }
+   }
    
-   // Check if history is available
-   if(!HistorySelect(0, TimeCurrent())) {
+   CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Parameter set not found for strategy: " + strategyID);
+   paramSet.Clear();
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Add new performance metrics                                      |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::AddPerformanceMetrics(SVPerformanceMetrics &metrics)
+{
+   // Check if metrics already exists
+   for(int i = 0; i < m_perfMetricsCount; i++) {
+      if(m_perfMetrics[i].strategyID == metrics.strategyID) {
+         // Update existing metrics
+         return UpdatePerformanceMetrics(metrics.strategyID, metrics);
+      }
+   }
+   
+   // Add new metrics
+   int newIndex = m_perfMetricsCount;
+   m_perfMetricsCount++;
+   ArrayResize(m_perfMetrics, m_perfMetricsCount);
+   
+   m_perfMetrics[newIndex] = metrics;
+   m_perfMetrics[newIndex].lastUpdated = TimeCurrent();
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Added performance metrics for strategy: " + metrics.strategyID);
+   
+   SavePerformanceMetrics();
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Update existing performance metrics                              |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::UpdatePerformanceMetrics(string strategyID, SVPerformanceMetrics &newMetrics)
+{
+   // Find metrics by strategy ID
+   for(int i = 0; i < m_perfMetricsCount; i++) {
+      if(m_perfMetrics[i].strategyID == strategyID) {
+         // Update metrics
+         m_perfMetrics[i] = newMetrics;
+         m_perfMetrics[i].lastUpdated = TimeCurrent();
+         
+         CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Updated performance metrics for strategy: " + strategyID);
+         
+         SavePerformanceMetrics();
+         
+         return true;
+      }
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Performance metrics not found for strategy: " + strategyID);
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Get performance metrics by strategy ID                           |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::GetPerformanceMetrics(string strategyID, SVPerformanceMetrics &metrics)
+{
+   // Find metrics by strategy ID
+   for(int i = 0; i < m_perfMetricsCount; i++) {
+      if(m_perfMetrics[i].strategyID == strategyID) {
+         // Return metrics
+         metrics = m_perfMetrics[i];
+         return true;
+      }
+   }
+   
+   CSVUtils::Log(LOG_LEVEL_WARNING, __FUNCTION__, "Performance metrics not found for strategy: " + strategyID);
+   metrics.Clear();
+   return false;
+}
+
+//+------------------------------------------------------------------+
+//| Get adaptive risk multiplier based on performance                |
+//+------------------------------------------------------------------+
+double CSVOptimizer::GetAdaptiveRiskMultiplier(string strategyID)
+{
+   SVPerformanceMetrics metrics;
+   
+   if(!GetPerformanceMetrics(strategyID, metrics)) {
+      // No metrics available, use default
+      return 1.0;
+   }
+   
+   // Need at least 10 trades for adaptiveness
+   if(metrics.totalTrades < 10) {
+      return 1.0;
+   }
+   
+   // Get base parameter
+   SVParameterSet params;
+   double baseRiskMultiplier = 1.0;
+   
+   if(GetParameterSet(strategyID, params)) {
+      baseRiskMultiplier = params.riskMultiplier;
+   }
+   
+   // Calculate adaptive multiplier based on performance
+   double adaptiveMultiplier = 1.0;
+   
+   // Adjust based on win rate
+   if(metrics.winRate > 60.0) {
+      // Good win rate, can increase risk slightly
+      adaptiveMultiplier *= 1.1;
+   } else if(metrics.winRate < 40.0) {
+      // Poor win rate, reduce risk
+      adaptiveMultiplier *= 0.9;
+   }
+   
+   // Adjust based on profit factor
+   if(metrics.profitFactor > 1.5) {
+      // Good profit factor, can increase risk slightly
+      adaptiveMultiplier *= 1.1;
+   } else if(metrics.profitFactor < 1.0) {
+      // Poor profit factor, reduce risk
+      adaptiveMultiplier *= 0.8;
+   }
+   
+   // Adjust based on drawdown
+   if(metrics.maxDrawdown > 10.0) {
+      // High drawdown, reduce risk
+      adaptiveMultiplier *= 0.9;
+   }
+   
+   // Apply bounds to avoid extreme changes
+   adaptiveMultiplier = MathMax(0.7, MathMin(1.3, adaptiveMultiplier));
+   
+   // Apply to base risk multiplier
+   double result = baseRiskMultiplier * adaptiveMultiplier;
+   
+   // Log adaptive adjustment if significant
+   if(MathAbs(result - baseRiskMultiplier) > 0.1) {
+      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Adaptive risk multiplier for " + strategyID + 
+                   " adjusted from " + DoubleToString(baseRiskMultiplier, 2) + 
+                   " to " + DoubleToString(result, 2));
+   }
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Get adaptive ATR multiplier based on performance                 |
+//+------------------------------------------------------------------+
+double CSVOptimizer::GetAdaptiveATRMultiplier(string strategyID, bool isStopLoss)
+{
+   SVPerformanceMetrics metrics;
+   
+   if(!GetPerformanceMetrics(strategyID, metrics)) {
+      // No metrics available, use default
+      return isStopLoss ? 1.5 : 2.0;
+   }
+   
+   // Need at least 10 trades for adaptiveness
+   if(metrics.totalTrades < 10) {
+      return isStopLoss ? 1.5 : 2.0;
+   }
+   
+   // Get base parameters
+   SVParameterSet params;
+   double baseMultiplier;
+   
+   if(GetParameterSet(strategyID, params)) {
+      baseMultiplier = isStopLoss ? params.atrMultiplierSL : params.atrMultiplierTP;
+   } else {
+      baseMultiplier = isStopLoss ? 1.5 : 2.0;
+   }
+   
+   // Calculate adaptive multiplier based on performance
+   double adaptiveMultiplier = 1.0;
+   
+   if(isStopLoss) {
+      // Adjusting SL multiplier
+      
+      // If win rate is low, SL may be too tight
+      if(metrics.winRate < 40.0) {
+         adaptiveMultiplier *= 1.1;  // Widen SL
+      }
+      
+      // If average loss is high relative to average win
+      if(metrics.averageLoss > 0.0 && metrics.averageWin > 0.0 && 
+         MathAbs(metrics.averageLoss) > metrics.averageWin * 1.5) {
+         adaptiveMultiplier *= 1.1;  // Widen SL to reduce large losses
+      }
+   } else {
+      // Adjusting TP multiplier
+      
+      // If win rate is high but profit factor is low, TP may be too small
+      if(metrics.winRate > 60.0 && metrics.profitFactor < 1.2) {
+         adaptiveMultiplier *= 1.1;  // Widen TP
+      }
+      
+      // If average win is small relative to average loss
+      if(metrics.averageLoss < 0.0 && metrics.averageWin > 0.0 && 
+         metrics.averageWin < MathAbs(metrics.averageLoss) * 0.7) {
+         adaptiveMultiplier *= 1.1;  // Widen TP to get larger wins
+      }
+   }
+   
+   // Apply bounds to avoid extreme changes
+   adaptiveMultiplier = MathMax(0.8, MathMin(1.2, adaptiveMultiplier));
+   
+   // Apply to base multiplier
+   double result = baseMultiplier * adaptiveMultiplier;
+   
+   // Ensure reasonable bounds
+   if(isStopLoss) {
+      result = MathMax(1.0, MathMin(2.5, result));
+   } else {
+      result = MathMax(1.0, MathMin(3.0, result));
+   }
+   
+   // Log adaptive adjustment if significant
+   if(MathAbs(result - baseMultiplier) > 0.1) {
+      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Adaptive " + (isStopLoss ? "SL" : "TP") + 
+                   " ATR multiplier for " + strategyID + " adjusted from " + 
+                   DoubleToString(baseMultiplier, 2) + " to " + DoubleToString(result, 2));
+   }
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Get adaptive indicator period based on performance               |
+//+------------------------------------------------------------------+
+int CSVOptimizer::GetAdaptivePeriod(string strategyID, string periodName)
+{
+   SVPerformanceMetrics metrics;
+   
+   if(!GetPerformanceMetrics(strategyID, metrics)) {
+      // No metrics available, use default
+      if(periodName == "EMA_FAST") return 5;
+      if(periodName == "EMA_SLOW") return 20;
+      if(periodName == "MOMENTUM") return 5;
+      return 14;  // Default period
+   }
+   
+   // Need at least 10 trades for adaptiveness
+   if(metrics.totalTrades < 10) {
+      if(periodName == "EMA_FAST") return 5;
+      if(periodName == "EMA_SLOW") return 20;
+      if(periodName == "MOMENTUM") return 5;
+      return 14;  // Default period
+   }
+   
+   // Get base parameters
+   SVParameterSet params;
+   int basePeriod;
+   
+   if(GetParameterSet(strategyID, params)) {
+      if(periodName == "EMA_FAST") basePeriod = params.emaPeriodFast;
+      else if(periodName == "EMA_SLOW") basePeriod = params.emaPeriodSlow;
+      else if(periodName == "MOMENTUM") basePeriod = params.momentumPeriod;
+      else basePeriod = 14;  // Default period
+   } else {
+      if(periodName == "EMA_FAST") basePeriod = 5;
+      if(periodName == "EMA_SLOW") basePeriod = 20;
+      if(periodName == "MOMENTUM") basePeriod = 5;
+      else basePeriod = 14;  // Default period
+   }
+   
+   // Calculate adaptive period based on performance
+   int adaptivePeriod = basePeriod;
+   
+   // For now, limited adaptiveness for periods
+   // Could implement more sophisticated logic based on specific metrics
+   
+   return adaptivePeriod;
+}
+
+//+------------------------------------------------------------------+
+//| Log trade data for analysis                                      |
+//+------------------------------------------------------------------+
+void CSVOptimizer::LogTradeData(ulong ticket, ENUM_DEAL_TYPE dealType, double lots, 
+                               double openPrice, double closePrice, double profit, 
+                               string strategyID, datetime openTime, datetime closeTime)
+{
+   if(!m_logTradeData || m_logFile == INVALID_HANDLE) {
       return;
    }
    
-   int totalDeals = HistoryDealsTotal();
+   // Format trade data as CSV
+   string dealTypeStr = (dealType == DEAL_TYPE_BUY) ? "BUY" : "SELL";
+   string logLine = IntegerToString(ticket) + "," +
+                   dealTypeStr + "," +
+                   DoubleToString(lots, 2) + "," +
+                   DoubleToString(openPrice, 5) + "," +
+                   DoubleToString(closePrice, 5) + "," +
+                   DoubleToString(profit, 2) + "," +
+                   strategyID + "," +
+                   TimeToString(openTime) + "," +
+                   TimeToString(closeTime);
    
-   // Process deals
-   for(int i = 0; i < totalDeals; i++) {
-      ulong dealTicket = HistoryDealGetTicket(i);
+   // Write to log file
+   FileWrite(m_logFile, logLine);
+   FileFlush(m_logFile);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate custom fitness for strategy tester                     |
+//+------------------------------------------------------------------+
+double CSVOptimizer::CalculateCustomFitness()
+{
+   if(!MQLInfoInteger(MQL_TESTER)) {
+      return 0.0;
+   }
+   
+   return CalculateCustomFitnessValue();
+}
+
+//+------------------------------------------------------------------+
+//| Initialize trade log                                             |
+//+------------------------------------------------------------------+
+void CSVOptimizer::InitializeTradeLog()
+{
+   if(!MQLInfoInteger(MQL_TESTER)) {
+      return;
+   }
+   
+   m_logTradeData = true;
+   
+   // Create log file name with timestamp
+   m_logFileName = "ScalpingVortex_TradeLog_" + TimeToString(TimeCurrent()) + ".csv";
+   m_logFile = FileOpen(m_logFileName, FILE_WRITE|FILE_CSV|FILE_ANSI);
+   
+   if(m_logFile != INVALID_HANDLE) {
+      // Write header
+      FileWrite(m_logFile, "Ticket,DealType,Lots,OpenPrice,ClosePrice,Profit,StrategyID,OpenTime,CloseTime");
+      FileFlush(m_logFile);
       
-      if(dealTicket <= 0) continue;
-      
-      // Check if deal belongs to our EA
-      if(HistoryDealGetInteger(dealTicket, DEAL_MAGIC) == m_magicNumber) {
-         ENUM_DEAL_TYPE dealType = (ENUM_DEAL_TYPE)HistoryDealGetInteger(dealTicket, DEAL_TYPE);
-         
-         // Only count closed positions (out deals)
-         if(dealType == DEAL_TYPE_BUY || dealType == DEAL_TYPE_SELL) {
-            continue;  // Entry deals, skip
-         }
-         
-         double profit = HistoryDealGetDouble(dealTicket, DEAL_PROFIT);
-         
-         m_totalTrades++;
-         
-         if(profit > 0.0) {
-            m_winningTrades++;
-            m_grossProfit += profit;
-         } else if(profit < 0.0) {
-            m_losingTrades++;
-            m_grossLoss += profit;  // Note: profit is negative for losses
-         }
-      }
-   }
-   
-   // Calculate derived statistics
-   m_netProfit = m_grossProfit + m_grossLoss;  // grossLoss is already negative
-   
-   m_winRate = (m_totalTrades > 0) ? 
-              (double)m_winningTrades / (double)m_totalTrades * 100.0 : 0.0;
-   
-   m_averageProfit = (m_winningTrades > 0) ? 
-                    m_grossProfit / (double)m_winningTrades : 0.0;
-   
-   m_averageLoss = (m_losingTrades > 0) ? 
-                  m_grossLoss / (double)m_losingTrades : 0.0;
-   
-   m_profitFactor = (MathAbs(m_grossLoss) > 0.0) ? 
-                   m_grossProfit / MathAbs(m_grossLoss) : 
-                   (m_grossProfit > 0.0 ? 100.0 : 0.0);
-   
-   m_expectancy = (m_totalTrades > 0) ? 
-                 ((m_winRate / 100.0) * m_averageProfit) - 
-                 ((1.0 - m_winRate / 100.0) * MathAbs(m_averageLoss)) : 0.0;
-}
-
-//+------------------------------------------------------------------+
-//| Calculate lot size from risk amount                              |
-//+------------------------------------------------------------------+
-double CSVPortfolio::CalculateLotSizeFromRisk(double riskAmount, double stopLossPips)
-{
-   if(riskAmount <= 0.0 || stopLossPips <= 0.0) {
-      return 0.0;
-   }
-   
-   double tickSize = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
-   double tickValue = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE);
-   double pipValue = (0.01 / tickSize) * tickValue;  // Value of 1 pip (0.01) in account currency
-   double pointValue = tickValue / tickSize;         // Value of 1 point in account currency
-   
-   // For XAUUSD, 1 pip is typically 0.01 (10 points)
-   double riskPerPip = riskAmount / stopLossPips;
-   double lotSize = riskPerPip / pipValue;
-   
-   // Normalize lot size to valid value
-   lotSize = CSVUtils::NormalizeLotSize(lotSize);
-   
-   return lotSize;
-}
-
-//+------------------------------------------------------------------+
-//| Get risk amount for specific lot size and stop loss              |
-//+------------------------------------------------------------------+
-double CSVPortfolio::GetRiskAmountForLotSize(double lotSize, double stopLossPips)
-{
-   if(lotSize <= 0.0 || stopLossPips <= 0.0) {
-      return 0.0;
-   }
-   
-   double pipValue = GetPipValue(lotSize);
-   
-   return pipValue * stopLossPips;
-}
-
-//+------------------------------------------------------------------+
-//| Get potential stop loss amount for a position                    |
-//+------------------------------------------------------------------+
-double CSVPortfolio::GetStopLossAmount(ulong ticket)
-{
-   if(!PositionSelectByTicket(ticket)) {
-      return 0.0;
-   }
-   
-   // Check if position has stop loss
-   double stopLoss = PositionGetDouble(POSITION_SL);
-   
-   if(stopLoss <= 0.0) {
-      return 0.0;
-   }
-   
-   double entryPrice = PositionGetDouble(POSITION_PRICE_OPEN);
-   double volume = PositionGetDouble(POSITION_VOLUME);
-   ENUM_POSITION_TYPE posType = (ENUM_POSITION_TYPE)PositionGetInteger(POSITION_TYPE);
-   
-   double stopLossPips;
-   
-   if(posType == POSITION_TYPE_BUY) {
-      stopLossPips = CSVUtils::PriceToPips(entryPrice - stopLoss);
+      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Trade log initialized: " + m_logFileName);
    } else {
-      stopLossPips = CSVUtils::PriceToPips(stopLoss - entryPrice);
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to open trade log file: " + 
+                   IntegerToString(GetLastError()));
+      m_logTradeData = false;
    }
-   
-   return GetRiskAmountForLotSize(volume, stopLossPips);
 }
 
 //+------------------------------------------------------------------+
-//| Get pip value for specific lot size                              |
+//| Finalize trade log                                               |
 //+------------------------------------------------------------------+
-double CSVPortfolio::GetPipValue(double lots)
+void CSVOptimizer::FinalizeTradeLog()
 {
-   double tickSize = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
-   double tickValue = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_VALUE);
-   double contractSize = SymbolInfoDouble(Symbol(), SYMBOL_TRADE_CONTRACT_SIZE);
+   if(m_logFile != INVALID_HANDLE) {
+      FileClose(m_logFile);
+      m_logFile = INVALID_HANDLE;
+      
+      CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Trade log finalized: " + m_logFileName);
+   }
    
-   // For XAUUSD, 1 pip is typically 0.01 (10 points)
-   double pipInPoints = 0.01 / tickSize;
-   double pipValue = tickValue * pipInPoints * lots;
+   m_logTradeData = false;
+}
+
+//+------------------------------------------------------------------+
+//| Load parameter sets from file                                    |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::LoadParameterSets()
+{
+   string fileName = "ScalpingVortex_ParamSets.bin";
    
-   return pipValue;
+   if(!FileIsExist(fileName)) {
+      // Create default parameter sets
+      SVParameterSet rangeParams;
+      rangeParams.Clear();
+      rangeParams.strategyID = "RANGE_FADE";
+      rangeParams.entryThreshold = 0.2;
+      rangeParams.exitThreshold = 0.5;
+      rangeParams.atrMultiplierSL = 1.2;
+      rangeParams.atrMultiplierTP = 1.0;
+      rangeParams.momentumPeriod = 5;
+      rangeParams.emaPeriodFast = 5;
+      rangeParams.emaPeriodSlow = 20;
+      rangeParams.riskMultiplier = 1.0;
+      rangeParams.lastUpdated = TimeCurrent();
+      
+      SVParameterSet impulseParams;
+      impulseParams.Clear();
+      impulseParams.strategyID = "IMPULSE_RIDER";
+      impulseParams.entryThreshold = 0.3;
+      impulseParams.exitThreshold = 0.8;
+      impulseParams.atrMultiplierSL = 1.5;
+      impulseParams.atrMultiplierTP = 2.0;
+      impulseParams.momentumPeriod = 5;
+      impulseParams.emaPeriodFast = 5;
+      impulseParams.emaPeriodSlow = 20;
+      impulseParams.riskMultiplier = 1.0;
+      impulseParams.lastUpdated = TimeCurrent();
+      
+      // Add default parameter sets
+      m_paramSetsCount = 2;
+      ArrayResize(m_paramSets, m_paramSetsCount);
+      m_paramSets[0] = rangeParams;
+      m_paramSets[1] = impulseParams;
+      
+      // Save defaults to file
+      SaveParameterSets();
+      
+      return true;
+   }
+   
+   // Open file
+   int file = FileOpen(fileName, FILE_READ|FILE_BIN);
+   
+   if(file == INVALID_HANDLE) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to open parameter sets file: " + 
+                   IntegerToString(GetLastError()));
+      return false;
+   }
+   
+   // Read parameter sets count
+   int count = 0;
+   if(FileReadInteger(file, INT_VALUE) != 123456) {
+      // Invalid file format
+      FileClose(file);
+      return false;
+   }
+   
+   count = FileReadInteger(file, INT_VALUE);
+   
+   if(count <= 0 || count > 100) {
+      // Invalid count
+      FileClose(file);
+      return false;
+   }
+   
+   // Resize array
+   m_paramSetsCount = count;
+   ArrayResize(m_paramSets, m_paramSetsCount);
+   
+   // Read parameter sets
+   for(int i = 0; i < m_paramSetsCount; i++) {
+      m_paramSets[i].strategyID = FileReadString(file);
+      m_paramSets[i].entryThreshold = FileReadDouble(file);
+      m_paramSets[i].exitThreshold = FileReadDouble(file);
+      m_paramSets[i].atrMultiplierSL = FileReadDouble(file);
+      m_paramSets[i].atrMultiplierTP = FileReadDouble(file);
+      m_paramSets[i].momentumPeriod = FileReadInteger(file, INT_VALUE);
+      m_paramSets[i].emaPeriodFast = FileReadInteger(file, INT_VALUE);
+      m_paramSets[i].emaPeriodSlow = FileReadInteger(file, INT_VALUE);
+      m_paramSets[i].riskMultiplier = FileReadDouble(file);
+      m_paramSets[i].lastUpdated = (datetime)FileReadLong(file);
+   }
+   
+   FileClose(file);
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Loaded " + IntegerToString(m_paramSetsCount) + 
+                " parameter sets from file");
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Save parameter sets to file                                      |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::SaveParameterSets()
+{
+   if(m_paramSetsCount <= 0) {
+      return false;
+   }
+   
+   string fileName = "ScalpingVortex_ParamSets.bin";
+   
+   // Open file
+   int file = FileOpen(fileName, FILE_WRITE|FILE_BIN);
+   
+   if(file == INVALID_HANDLE) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to create parameter sets file: " + 
+                   IntegerToString(GetLastError()));
+      return false;
+   }
+   
+   // Write parameter sets count
+   FileWriteInteger(file, 123456);  // File format identifier
+   FileWriteInteger(file, m_paramSetsCount);
+   
+   // Write parameter sets
+   for(int i = 0; i < m_paramSetsCount; i++) {
+      FileWriteString(file, m_paramSets[i].strategyID);
+      FileWriteDouble(file, m_paramSets[i].entryThreshold);
+      FileWriteDouble(file, m_paramSets[i].exitThreshold);
+      FileWriteDouble(file, m_paramSets[i].atrMultiplierSL);
+      FileWriteDouble(file, m_paramSets[i].atrMultiplierTP);
+      FileWriteInteger(file, m_paramSets[i].momentumPeriod);
+      FileWriteInteger(file, m_paramSets[i].emaPeriodFast);
+      FileWriteInteger(file, m_paramSets[i].emaPeriodSlow);
+      FileWriteDouble(file, m_paramSets[i].riskMultiplier);
+      FileWriteLong(file, m_paramSets[i].lastUpdated);
+   }
+   
+   FileClose(file);
+   
+   CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "Saved " + IntegerToString(m_paramSetsCount) + 
+                " parameter sets to file");
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Load performance metrics from file                               |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::LoadPerformanceMetrics()
+{
+   string fileName = "ScalpingVortex_PerfMetrics.bin";
+   
+   if(!FileIsExist(fileName)) {
+      // Create empty performance metrics
+      m_perfMetricsCount = 0;
+      ArrayResize(m_perfMetrics, m_perfMetricsCount);
+      return true;
+   }
+   
+   // Open file
+   int file = FileOpen(fileName, FILE_READ|FILE_BIN);
+   
+   if(file == INVALID_HANDLE) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to open performance metrics file: " + 
+                   IntegerToString(GetLastError()));
+      return false;
+   }
+   
+   // Read metrics count
+   int count = 0;
+   if(FileReadInteger(file, INT_VALUE) != 789012) {
+      // Invalid file format
+      FileClose(file);
+      return false;
+   }
+   
+   count = FileReadInteger(file, INT_VALUE);
+   
+   if(count < 0 || count > 100) {
+      // Invalid count
+      FileClose(file);
+      return false;
+   }
+   
+   // Resize array
+   m_perfMetricsCount = count;
+   ArrayResize(m_perfMetrics, m_perfMetricsCount);
+   
+   // Read metrics
+   for(int i = 0; i < m_perfMetricsCount; i++) {
+      m_perfMetrics[i].strategyID = FileReadString(file);
+      m_perfMetrics[i].totalTrades = FileReadInteger(file, INT_VALUE);
+      m_perfMetrics[i].winningTrades = FileReadInteger(file, INT_VALUE);
+      m_perfMetrics[i].losingTrades = FileReadInteger(file, INT_VALUE);
+      m_perfMetrics[i].grossProfit = FileReadDouble(file);
+      m_perfMetrics[i].grossLoss = FileReadDouble(file);
+      m_perfMetrics[i].netProfit = FileReadDouble(file);
+      m_perfMetrics[i].winRate = FileReadDouble(file);
+      m_perfMetrics[i].profitFactor = FileReadDouble(file);
+      m_perfMetrics[i].averageWin = FileReadDouble(file);
+      m_perfMetrics[i].averageLoss = FileReadDouble(file);
+      m_perfMetrics[i].expectancy = FileReadDouble(file);
+      m_perfMetrics[i].maxDrawdown = FileReadDouble(file);
+      m_perfMetrics[i].sharpeRatio = FileReadDouble(file);
+      m_perfMetrics[i].lastUpdated = (datetime)FileReadLong(file);
+   }
+   
+   FileClose(file);
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Loaded " + IntegerToString(m_perfMetricsCount) + 
+                " performance metrics from file");
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Save performance metrics to file                                 |
+//+------------------------------------------------------------------+
+bool CSVOptimizer::SavePerformanceMetrics()
+{
+   string fileName = "ScalpingVortex_PerfMetrics.bin";
+   
+   // Open file
+   int file = FileOpen(fileName, FILE_WRITE|FILE_BIN);
+   
+   if(file == INVALID_HANDLE) {
+      CSVUtils::Log(LOG_LEVEL_ERROR, __FUNCTION__, "Failed to create performance metrics file: " + 
+                   IntegerToString(GetLastError()));
+      return false;
+   }
+   
+   // Write metrics count
+   FileWriteInteger(file, 789012);  // File format identifier
+   FileWriteInteger(file, m_perfMetricsCount);
+   
+   // Write metrics
+   for(int i = 0; i < m_perfMetricsCount; i++) {
+      FileWriteString(file, m_perfMetrics[i].strategyID);
+      FileWriteInteger(file, m_perfMetrics[i].totalTrades);
+      FileWriteInteger(file, m_perfMetrics[i].winningTrades);
+      FileWriteInteger(file, m_perfMetrics[i].losingTrades);
+      FileWriteDouble(file, m_perfMetrics[i].grossProfit);
+      FileWriteDouble(file, m_perfMetrics[i].grossLoss);
+      FileWriteDouble(file, m_perfMetrics[i].netProfit);
+      FileWriteDouble(file, m_perfMetrics[i].winRate);
+      FileWriteDouble(file, m_perfMetrics[i].profitFactor);
+      FileWriteDouble(file, m_perfMetrics[i].averageWin);
+      FileWriteDouble(file, m_perfMetrics[i].averageLoss);
+      FileWriteDouble(file, m_perfMetrics[i].expectancy);
+      FileWriteDouble(file, m_perfMetrics[i].maxDrawdown);
+      FileWriteDouble(file, m_perfMetrics[i].sharpeRatio);
+      FileWriteLong(file, m_perfMetrics[i].lastUpdated);
+   }
+   
+   FileClose(file);
+   
+   CSVUtils::Log(LOG_LEVEL_DEBUG, __FUNCTION__, "Saved " + IntegerToString(m_perfMetricsCount) + 
+                " performance metrics to file");
+   
+   return true;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate expectancy for a strategy                              |
+//+------------------------------------------------------------------+
+double CSVOptimizer::CalculateExpectancy(string strategyID)
+{
+   SVPerformanceMetrics metrics;
+   
+   if(!GetPerformanceMetrics(strategyID, metrics)) {
+      return 0.0;
+   }
+   
+   if(metrics.totalTrades <= 0) {
+      return 0.0;
+   }
+   
+   // Expectancy formula: (Win% * Avg Win) - (Loss% * Avg Loss)
+   double winPercent = metrics.winningTrades / (double)metrics.totalTrades;
+   double lossPercent = metrics.losingTrades / (double)metrics.totalTrades;
+   
+   return (winPercent * metrics.averageWin) - (lossPercent * MathAbs(metrics.averageLoss));
+}
+
+//+------------------------------------------------------------------+
+//| Calculate Sharpe ratio for a strategy                            |
+//+------------------------------------------------------------------+
+double CSVOptimizer::CalculateSharpeRatio(string strategyID)
+{
+   // This is a simplified Sharpe ratio calculation
+   // In a real implementation, you would need a series of returns
+   // and calculate the ratio properly
+   
+   SVPerformanceMetrics metrics;
+   
+   if(!GetPerformanceMetrics(strategyID, metrics)) {
+      return 0.0;
+   }
+   
+   if(metrics.totalTrades <= 0) {
+      return 0.0;
+   }
+   
+   // Simplified Sharpe ratio (profit factor / drawdown)
+   if(metrics.maxDrawdown <= 0.0) {
+      return 0.0;
+   }
+   
+   return metrics.profitFactor / metrics.maxDrawdown;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate custom fitness value for optimization                  |
+//+------------------------------------------------------------------+
+double CSVOptimizer::CalculateCustomFitnessValue()
+{
+   if(m_portfolio == NULL) {
+      return 0.0;
+   }
+   
+   // Get tester statistics
+   double totalNetProfit = TesterStatistics(STAT_PROFIT);
+   int totalTrades = (int)TesterStatistics(STAT_TRADES);
+   double maxDrawdown = TesterStatistics(STAT_BALANCE_DD_RELATIVE);
+   double profitFactor = TesterStatistics(STAT_PROFIT_FACTOR);
+   double sharpeRatio = TesterStatistics(STAT_SHARPE_RATIO);
+   double equityDD = TesterStatistics(STAT_EQUITY_DD_RELATIVE);
+   double recoveryFactor = TesterStatistics(STAT_RECOVERY_FACTOR);
+   
+   // Avoid division by zero
+   if(maxDrawdown <= 0.0) maxDrawdown = 0.01;
+   if(equityDD <= 0.0) equityDD = 0.01;
+   
+   // Custom fitness formula - can be adjusted based on preferences
+   // This formula values:
+   // 1. Profit (higher is better)
+   // 2. Recovery factor (higher is better)
+   // 3. Profit factor (higher is better)
+   // 4. Low drawdown (lower is better)
+   // 5. Sharpe ratio (higher is better)
+   // 6. Number of trades (more is better, up to a point)
+   
+   double tradeCountFactor = MathMin(totalTrades / 100.0, 1.0);  // Cap at 100 trades
+   
+   double fitness = 0.0;
+   
+   fitness += totalNetProfit * 0.4;                   // 40% weight to net profit
+   fitness += recoveryFactor * 1000.0 * 0.2;          // 20% weight to recovery factor
+   fitness += profitFactor * 1000.0 * 0.15;           // 15% weight to profit factor
+   fitness += (100.0 / maxDrawdown) * 1000.0 * 0.15;  // 15% weight to inverse of drawdown
+   fitness += sharpeRatio * 100.0 * 0.05;             // 5% weight to Sharpe ratio
+   fitness += tradeCountFactor * 1000.0 * 0.05;       // 5% weight to trade count
+   
+   CSVUtils::Log(LOG_LEVEL_INFO, __FUNCTION__, "Custom fitness value: " + DoubleToString(fitness, 2));
+   
+   return fitness;
 }
