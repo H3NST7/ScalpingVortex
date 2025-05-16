@@ -1,459 +1,389 @@
 //+------------------------------------------------------------------+
-//|                                                   SVUtils.mqh |
-//|                                           Copyright 2025, H3nst7 |
-//|                                           https://www.h3nst7.com |
+//|                                                     SVUtils.mqh   |
 //+------------------------------------------------------------------+
-#property copyright "Copyright 2025, H3nst7"
-#property link      "https://www.h3nst7.com"
+#property copyright "ScalpingVortex"
+#property link      "https://github.com/H3NST7/ScalpingVortex"
+#property version   "1.00"
 #property strict
 
-// Logging levels enum
-enum ENUM_LOG_LEVEL {
-   LOG_LEVEL_NONE    = 0,  // No logging
-   LOG_LEVEL_CRITICAL = 1,  // Critical errors only
-   LOG_LEVEL_ERROR   = 2,  // Errors
-   LOG_LEVEL_WARNING = 3,  // Warnings
-   LOG_LEVEL_INFO    = 4,  // Informational messages
-   LOG_LEVEL_DEBUG   = 5   // Detailed debug info
-};
-
-// Market session enum
-enum ENUM_MARKET_SESSION {
-   MARKET_SESSION_UNKNOWN = 0,  // Unknown session
-   MARKET_SESSION_ASIAN   = 1,  // Asian session
-   MARKET_SESSION_LONDON  = 2,  // London session
-   MARKET_SESSION_NEWYORK = 3,  // New York session
-   MARKET_SESSION_OVERLAP = 4   // Session overlap
-};
-
-// Utility static class
-class CSVUtils
-{
-private:
-   static ENUM_LOG_LEVEL m_logLevel;      // Current log level
-   static int m_logFile;                  // Log file handle
-   static string m_logFileName;           // Log file name
-   static bool m_logToFile;               // Flag to log to file
-   
-   // Private helper methods
-   static string GetLogLevelString(ENUM_LOG_LEVEL level);
-   static string TimeToString(datetime time);
-   static bool IsTimeInRange(const datetime time, const string rangeStr);
-   
-public:
-   // Logging functions
-   static void InitializeLogging(ENUM_LOG_LEVEL level, bool logToFile = true);
-   static void SetLogLevel(ENUM_LOG_LEVEL level);
-   static void Log(ENUM_LOG_LEVEL level, string module, string message);
-   static void CloseLogging();
-   
-   // Date & time utility functions
-   static ENUM_MARKET_SESSION GetCurrentSession();
-   static bool IsInExcludedTime(const string excludedTimes);
-   static bool IsWeekend();
-   static bool IsHighImpactNewsTime(datetime time, int bufferMinutesBefore, int bufferMinutesAfter);
-   
-   // String manipulation functions
-   static string DoubleToString(double value, int digits);
-   static string IntegerToString(long value);
-   static string OrderTypeToString(ENUM_ORDER_TYPE orderType);
-   static string FormatError(int errorCode);
-   
-   // Math & statistical functions
-   static double NormalizeDouble(double value, int digits);
-   static double CalculateStandardDeviation(double &data[], int start, int count);
-   static int Round(double value);
-   
-   // Market/Symbol information functions
-   static double GetPointValue();
-   static double GetTickSize();
-   static double GetMinLot();
-   static double GetLotStep();
-   static double GetMaxLot();
-   static double GetContractSize();
-   static double PipsToPrice(double pips);
-   static double PriceToPips(double price);
-   static bool IsValidLotSize(double lotSize);
-   static double NormalizeLotSize(double lotSize);
-};
-
-// Static member initialization
-ENUM_LOG_LEVEL CSVUtils::m_logLevel = LOG_LEVEL_INFO;
-int CSVUtils::m_logFile = INVALID_HANDLE;
-string CSVUtils::m_logFileName = "";
-bool CSVUtils::m_logToFile = true;
+//+------------------------------------------------------------------+
+//| Date and time utility functions                                  |
+//+------------------------------------------------------------------+
 
 //+------------------------------------------------------------------+
-//| Initialize logging with specified level                          |
+//| Format date/time as a string                                     |
 //+------------------------------------------------------------------+
-void CSVUtils::InitializeLogging(ENUM_LOG_LEVEL level, bool logToFile = true)
+string FormatDateTime(datetime time)
 {
-   m_logLevel = level;
-   m_logToFile = logToFile;
+   string result;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
    
-   if(m_logToFile) {
-      // Create log file name with timestamp
-      m_logFileName = "ScalpingVortex_" + TimeToString(TimeCurrent()) + ".log";
-      m_logFile = FileOpen(m_logFileName, FILE_WRITE|FILE_TXT|FILE_ANSI);
+   result = StringFormat("%04d-%02d-%02d %02d:%02d:%02d",
+                     dt.year,
+                     dt.mon,
+                     dt.day,
+                     dt.hour,
+                     dt.min,
+                     dt.sec);
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Format date as a string                                          |
+//+------------------------------------------------------------------+
+string FormatDate(datetime time)
+{
+   string result;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   
+   result = StringFormat("%04d-%02d-%02d",
+                     dt.year,
+                     dt.mon,
+                     dt.day);
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Format time as a string                                          |
+//+------------------------------------------------------------------+
+string FormatTime(datetime time)
+{
+   string result;
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   
+   result = StringFormat("%02d:%02d:%02d",
+                     dt.hour,
+                     dt.min,
+                     dt.sec);
+   
+   return result;
+}
+
+//+------------------------------------------------------------------+
+//| Check if the current hour is within trading hours                |
+//+------------------------------------------------------------------+
+bool IsTradingHour()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int hour = dt.hour;
+   
+   // Define trading hours (adjust as needed)
+   return (hour >= 8 && hour < 20);
+}
+
+//+------------------------------------------------------------------+
+//| Calculate minutes since the start of the day                     |
+//+------------------------------------------------------------------+
+int MinutesSinceDayStart(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.hour * 60 + dt.min;
+}
+
+//+------------------------------------------------------------------+
+//| Check if today is a weekend                                      |
+//+------------------------------------------------------------------+
+bool IsWeekend()
+{
+   MqlDateTime dt;
+   TimeToStruct(TimeCurrent(), dt);
+   int day = dt.day_of_week;
+   return (day == 0 || day == 6); // 0 = Sunday, 6 = Saturday
+}
+
+//+------------------------------------------------------------------+
+//| Check if the market is open                                      |
+//+------------------------------------------------------------------+
+bool IsMarketOpen(string symbol = NULL)
+{
+   if(symbol == NULL)
+      symbol = Symbol();
       
-      if(m_logFile != INVALID_HANDLE) {
-         FileWrite(m_logFile, "======== ScalpingVortex Log Started at " + TimeToString(TimeCurrent()) + " ========");
-         FileFlush(m_logFile);
-      } else {
-         Print("Error opening log file: ", GetLastError());
-      }
+   return !IsTradeSessionClosed(); // MT4 built-in function
+}
+
+//+------------------------------------------------------------------+
+//| Error handling utility functions                                 |
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Get the error description based on error code                    |
+//+------------------------------------------------------------------+
+string GetErrorDescription(int errorCode)
+{
+   string errorDescription = "Unknown error";
+   
+   switch(errorCode)
+   {
+      case 0:   errorDescription = "No error"; break;
+      case 1:   errorDescription = "No error, but the result is unknown"; break;
+      case 2:   errorDescription = "Common error"; break;
+      case 3:   errorDescription = "Invalid trade parameters"; break;
+      case 4:   errorDescription = "Trade server is busy"; break;
+      case 5:   errorDescription = "Old version of the client terminal"; break;
+      case 6:   errorDescription = "No connection with trade server"; break;
+      case 7:   errorDescription = "Not enough rights"; break;
+      case 8:   errorDescription = "Too frequent requests"; break;
+      case 9:   errorDescription = "Malfunctional trade operation"; break;
+      case 64:  errorDescription = "Account disabled"; break;
+      case 65:  errorDescription = "Invalid account"; break;
+      case 128: errorDescription = "Trade timeout"; break;
+      case 129: errorDescription = "Invalid price"; break;
+      case 130: errorDescription = "Invalid stops"; break;
+      case 131: errorDescription = "Invalid trade volume"; break;
+      case 132: errorDescription = "Market is closed"; break;
+      case 133: errorDescription = "Trade is disabled"; break;
+      case 134: errorDescription = "Not enough money"; break;
+      case 135: errorDescription = "Price changed"; break;
+      case 136: errorDescription = "Off quotes"; break;
+      case 137: errorDescription = "Broker is busy"; break;
+      case 138: errorDescription = "Requote"; break;
+      case 139: errorDescription = "Order is locked"; break;
+      case 140: errorDescription = "Long positions only allowed"; break;
+      case 141: errorDescription = "Too many requests"; break;
+      case 145: errorDescription = "Modification denied because order too close to market"; break;
+      case 146: errorDescription = "Trade context is busy"; break;
+      case 147: errorDescription = "Expirations are denied by broker"; break;
+      case 148: errorDescription = "Amount of open and pending orders has reached the limit"; break;
+      case 149: errorDescription = "An attempt to open an order countervailing to existing one"; break;
+      case 150: errorDescription = "Hedge is prohibited"; break;
+      case 4000: errorDescription = "No error"; break;
+      case 4001: errorDescription = "Wrong function pointer"; break;
+      case 4002: errorDescription = "Array index is out of range"; break;
+      case 4003: errorDescription = "No memory for function call stack"; break;
+      case 4004: errorDescription = "Recursive stack overflow"; break;
+      case 4005: errorDescription = "Not enough stack for parameter"; break;
+      case 4006: errorDescription = "No memory for parameter string"; break;
+      case 4007: errorDescription = "No memory for temp string"; break;
+      case 4008: errorDescription = "Not initialized string"; break;
+      case 4009: errorDescription = "Not initialized string in array"; break;
+      case 4010: errorDescription = "No memory for array string"; break;
+      case 4011: errorDescription = "Too long string"; break;
+      case 4012: errorDescription = "Remainder from zero divide"; break;
+      case 4013: errorDescription = "Zero divide"; break;
+      case 4014: errorDescription = "Unknown command"; break;
+      case 4015: errorDescription = "Wrong jump"; break;
+      case 4016: errorDescription = "Not initialized array"; break;
+      case 4017: errorDescription = "DLL calls are not allowed"; break;
+      case 4018: errorDescription = "Cannot load library"; break;
+      case 4019: errorDescription = "Cannot call function"; break;
+      case 4020: errorDescription = "Expert function calls are not allowed"; break;
+      case 4021: errorDescription = "Not enough memory for string returned from function"; break;
+      case 4022: errorDescription = "System is busy"; break;
+      case 4050: errorDescription = "Invalid function parameters count"; break;
+      case 4051: errorDescription = "Invalid function parameter value"; break;
+      case 4052: errorDescription = "String function internal error"; break;
+      case 4053: errorDescription = "Some array error"; break;
+      case 4054: errorDescription = "Incorrect series array using"; break;
+      case 4055: errorDescription = "Custom indicator error"; break;
+      case 4056: errorDescription = "Arrays are incompatible"; break;
+      case 4057: errorDescription = "Global variables processing error"; break;
+      case 4058: errorDescription = "Global variable not found"; break;
+      case 4059: errorDescription = "Function is not allowed in testing mode"; break;
+      case 4060: errorDescription = "Function is not confirmed"; break;
+      case 4061: errorDescription = "Send mail error"; break;
+      case 4062: errorDescription = "String parameter expected"; break;
+      case 4063: errorDescription = "Integer parameter expected"; break;
+      case 4064: errorDescription = "Double parameter expected"; break;
+      case 4065: errorDescription = "Array as parameter expected"; break;
+      case 4066: errorDescription = "Requested history data in update state"; break;
+      case 4067: errorDescription = "Some error in trading function"; break;
+      case 4099: errorDescription = "End of file"; break;
+      case 4100: errorDescription = "Some file error"; break;
+      case 4101: errorDescription = "Wrong file name"; break;
+      case 4102: errorDescription = "Too many opened files"; break;
+      case 4103: errorDescription = "Cannot open file"; break;
+      case 4104: errorDescription = "Incompatible access to a file"; break;
+      case 4105: errorDescription = "No order selected"; break;
+      case 4106: errorDescription = "Unknown symbol"; break;
+      case 4107: errorDescription = "Invalid price parameter for trade function"; break;
+      case 4108: errorDescription = "Invalid ticket"; break;
+      case 4109: errorDescription = "Trade is not allowed in the expert properties"; break;
+      case 4110: errorDescription = "Longs are not allowed in the expert properties"; break;
+      case 4111: errorDescription = "Shorts are not allowed in the expert properties"; break;
+      case 4200: errorDescription = "Object already exists"; break;
+      case 4201: errorDescription = "Unknown object property"; break;
+      case 4202: errorDescription = "Object does not exist"; break;
+      case 4203: errorDescription = "Unknown object type"; break;
+      case 4204: errorDescription = "No object name"; break;
+      case 4205: errorDescription = "Object coordinates error"; break;
+      case 4206: errorDescription = "No specified subwindow"; break;
+      case 4207: errorDescription = "Some error in object function"; break;
+      default:  errorDescription = "Error " + IntegerToString(errorCode); break;
    }
+   
+   return errorDescription;
 }
 
 //+------------------------------------------------------------------+
-//| Set the current log level                                        |
+//| Print an error message with details                              |
 //+------------------------------------------------------------------+
-void CSVUtils::SetLogLevel(ENUM_LOG_LEVEL level)
+void PrintError(string message, int errorCode)
 {
-   m_logLevel = level;
+   string errorDescription = GetErrorDescription(errorCode);
+   Print(message, " Error: ", errorCode, " (", errorDescription, ")");
 }
 
 //+------------------------------------------------------------------+
-//| Log a message with specified level                               |
+//| Fixed time function implementations to replace deprecated ones    |
 //+------------------------------------------------------------------+
-void CSVUtils::Log(ENUM_LOG_LEVEL level, string module, string message)
+
+// Modern MT4/MT5 compatible time functions
+int TimeYear(datetime time)
 {
-   // Check if we should log this level
-   if(level > m_logLevel) return;
-   
-   // Format the log message with timestamp, level and module
-   string logStr = TimeToString(TimeCurrent()) + " [" + GetLogLevelString(level) + "] " + module + ": " + message;
-   
-   // Print to MT5 console
-   Print(logStr);
-   
-   // Write to log file if enabled
-   if(m_logToFile && m_logFile != INVALID_HANDLE) {
-      FileWrite(m_logFile, logStr);
-      FileFlush(m_logFile);
-   }
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.year;
+}
+
+int TimeMonth(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.mon;
+}
+
+int TimeDay(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.day;
+}
+
+int TimeHour(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.hour;
+}
+
+int TimeMinute(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.min;
+}
+
+int TimeSeconds(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.sec;
+}
+
+int TimeDayOfWeek(datetime time)
+{
+   MqlDateTime dt;
+   TimeToStruct(time, dt);
+   return dt.day_of_week;
 }
 
 //+------------------------------------------------------------------+
-//| Close the log file                                               |
+//| String utilities                                                 |
 //+------------------------------------------------------------------+
-void CSVUtils::CloseLogging()
-{
-   if(m_logToFile && m_logFile != INVALID_HANDLE) {
-      FileWrite(m_logFile, "======== ScalpingVortex Log Ended at " + TimeToString(TimeCurrent()) + " ========");
-      FileClose(m_logFile);
-      m_logFile = INVALID_HANDLE;
-   }
-}
 
 //+------------------------------------------------------------------+
-//| Convert log level to string representation                        |
+//| Join array elements into a string with separator                 |
 //+------------------------------------------------------------------+
-string CSVUtils::GetLogLevelString(ENUM_LOG_LEVEL level)
+string JoinStrings(string &array[], string separator)
 {
-   switch(level) {
-      case LOG_LEVEL_CRITICAL: return "CRITICAL";
-      case LOG_LEVEL_ERROR:    return "ERROR";
-      case LOG_LEVEL_WARNING:  return "WARNING";
-      case LOG_LEVEL_INFO:     return "INFO";
-      case LOG_LEVEL_DEBUG:    return "DEBUG";
-      default:                 return "UNKNOWN";
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Convert datetime to formatted string                             |
-//+------------------------------------------------------------------+
-string CSVUtils::TimeToString(datetime time)
-{
-   return StringFormat("%04d.%02d.%02d %02d:%02d:%02d", 
-                       TimeYear(time), TimeMonth(time), TimeDay(time), 
-                       TimeHour(time), TimeMinute(time), TimeSeconds(time));
-}
-
-//+------------------------------------------------------------------+
-//| Determine the current market session                             |
-//+------------------------------------------------------------------+
-ENUM_MARKET_SESSION CSVUtils::GetCurrentSession()
-{
-   int hour = TimeHour(TimeCurrent());
+   string result = "";
+   int size = ArraySize(array);
    
-   // Note: Hours are in GMT
-   if(hour >= 0 && hour < 8) {
-      return MARKET_SESSION_ASIAN;
-   } else if(hour >= 8 && hour < 12) {
-      // London session with some Asian overlap
-      return MARKET_SESSION_LONDON;
-   } else if(hour >= 12 && hour < 16) {
-      // London and New York overlap
-      return MARKET_SESSION_OVERLAP;
-   } else if(hour >= 16 && hour < 20) {
-      return MARKET_SESSION_NEWYORK;
-   } else {
-      return MARKET_SESSION_UNKNOWN;
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Check if current time is in excluded time ranges                 |
-//+------------------------------------------------------------------+
-bool CSVUtils::IsInExcludedTime(const string excludedTimes)
-{
-   if(StringLen(excludedTimes) == 0) return false;
-   
-   datetime currentTime = TimeCurrent();
-   string ranges[];
-   
-   // Split by semicolon
-   int rangeCount = StringSplit(excludedTimes, ';', ranges);
-   
-   for(int i = 0; i < rangeCount; i++) {
-      if(StringLen(ranges[i]) == 0) continue;
+   for(int i = 0; i < size; i++)
+   {
+      if(i > 0)
+         result += separator;
       
-      if(IsTimeInRange(currentTime, ranges[i])) {
-         return true;
-      }
+      result += array[i];
    }
    
-   return false;
+   return result;
 }
 
 //+------------------------------------------------------------------+
-//| Check if time is within a specific time range                    |
+//| Split a string into an array using a separator                   |
 //+------------------------------------------------------------------+
-bool CSVUtils::IsTimeInRange(const datetime time, const string rangeStr)
+int SplitString(string str, string separator, string &array[])
 {
-   // Format expected: "HH:MM-HH:MM"
-   string timeParts[];
-   int splitCount = StringSplit(rangeStr, '-', timeParts);
+   int count = 0;
+   int pos = 0;
+   int sepLen = StringLen(separator);
+   int len = StringLen(str);
    
-   if(splitCount != 2) return false;
-   
-   // Extract start and end time parts
-   string startTimeParts[];
-   string endTimeParts[];
-   
-   int startSplitCount = StringSplit(timeParts[0], ':', startTimeParts);
-   int endSplitCount = StringSplit(timeParts[1], ':', endTimeParts);
-   
-   if(startSplitCount != 2 || endSplitCount != 2) return false;
-   
-   // Convert to minutes since midnight
-   int startMinutes = (int)StringToInteger(startTimeParts[0]) * 60 + (int)StringToInteger(startTimeParts[1]);
-   int endMinutes = (int)StringToInteger(endTimeParts[0]) * 60 + (int)StringToInteger(endTimeParts[1]);
-   int currentMinutes = TimeHour(time) * 60 + TimeMinute(time);
-   
-   // Check if current time is within range
-   if(startMinutes <= endMinutes) {
-      // Simple range (e.g., 09:30-16:30)
-      return (currentMinutes >= startMinutes && currentMinutes <= endMinutes);
-   } else {
-      // Overnight range (e.g., 22:00-02:30)
-      return (currentMinutes >= startMinutes || currentMinutes <= endMinutes);
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Check if it's currently weekend                                  |
-//+------------------------------------------------------------------+
-bool CSVUtils::IsWeekend()
-{
-   int dayOfWeek = TimeDayOfWeek(TimeCurrent());
-   return (dayOfWeek == 0 || dayOfWeek == 6);  // Sunday or Saturday
-}
-
-//+------------------------------------------------------------------+
-//| Check if time is around high-impact news                         |
-//+------------------------------------------------------------------+
-bool CSVUtils::IsHighImpactNewsTime(datetime time, int bufferMinutesBefore, int bufferMinutesAfter)
-{
-   // This is a stub function - would need to be implemented with actual news data
-   // For a real implementation, you would need to access an economic calendar API
-   return false;
-}
-
-//+------------------------------------------------------------------+
-//| Convert double to string with specified precision                |
-//+------------------------------------------------------------------+
-string CSVUtils::DoubleToString(double value, int digits)
-{
-   return StringFormat("%." + IntegerToString(digits) + "f", value);
-}
-
-//+------------------------------------------------------------------+
-//| Convert integer to string                                        |
-//+------------------------------------------------------------------+
-string CSVUtils::IntegerToString(long value)
-{
-   return StringFormat("%d", value);
-}
-
-//+------------------------------------------------------------------+
-//| Convert order type to string                                     |
-//+------------------------------------------------------------------+
-string CSVUtils::OrderTypeToString(ENUM_ORDER_TYPE orderType)
-{
-   switch(orderType) {
-      case ORDER_TYPE_BUY:            return "BUY";
-      case ORDER_TYPE_SELL:           return "SELL";
-      case ORDER_TYPE_BUY_LIMIT:      return "BUY LIMIT";
-      case ORDER_TYPE_SELL_LIMIT:     return "SELL LIMIT";
-      case ORDER_TYPE_BUY_STOP:       return "BUY STOP";
-      case ORDER_TYPE_SELL_STOP:      return "SELL STOP";
-      case ORDER_TYPE_BUY_STOP_LIMIT: return "BUY STOP LIMIT";
-      case ORDER_TYPE_SELL_STOP_LIMIT:return "SELL STOP LIMIT";
-      default:                        return "UNKNOWN";
-   }
-}
-
-//+------------------------------------------------------------------+
-//| Format error code to readable string                             |
-//+------------------------------------------------------------------+
-string CSVUtils::FormatError(int errorCode)
-{
-   return StringFormat("Error %d: %s", errorCode, ErrorDescription(errorCode));
-}
-
-//+------------------------------------------------------------------+
-//| Normalize double with specified precision                        |
-//+------------------------------------------------------------------+
-double CSVUtils::NormalizeDouble(double value, int digits)
-{
-   return ::NormalizeDouble(value, digits);
-}
-
-//+------------------------------------------------------------------+
-//| Calculate standard deviation for array                           |
-//+------------------------------------------------------------------+
-double CSVUtils::CalculateStandardDeviation(double &data[], int start, int count)
-{
-   if(count <= 1) return 0.0;
-   
-   double sum = 0.0;
-   double sumSquares = 0.0;
-   
-   for(int i = start; i < start + count; i++) {
-      sum += data[i];
-      sumSquares += data[i] * data[i];
+   // Count the number of separators
+   while((pos = StringFind(str, separator, pos)) != -1)
+   {
+      count++;
+      pos += sepLen;
    }
    
-   double mean = sum / count;
-   double variance = (sumSquares - sum * mean) / (count - 1);
+   // Resize the array to accommodate the parts
+   ArrayResize(array, count + 1);
    
-   return MathSqrt(variance);
-}
-
-//+------------------------------------------------------------------+
-//| Round double to nearest integer                                  |
-//+------------------------------------------------------------------+
-int CSVUtils::Round(double value)
-{
-   return (int)MathRound(value);
-}
-
-//+------------------------------------------------------------------+
-//| Get point value for current symbol                               |
-//+------------------------------------------------------------------+
-double CSVUtils::GetPointValue()
-{
-   return SymbolInfoDouble(Symbol(), SYMBOL_POINT);
-}
-
-//+------------------------------------------------------------------+
-//| Get tick size for current symbol                                 |
-//+------------------------------------------------------------------+
-double CSVUtils::GetTickSize()
-{
-   return SymbolInfoDouble(Symbol(), SYMBOL_TRADE_TICK_SIZE);
-}
-
-//+------------------------------------------------------------------+
-//| Get minimum lot size for current symbol                          |
-//+------------------------------------------------------------------+
-double CSVUtils::GetMinLot()
-{
-   return SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MIN);
-}
-
-//+------------------------------------------------------------------+
-//| Get lot step for current symbol                                  |
-//+------------------------------------------------------------------+
-double CSVUtils::GetLotStep()
-{
-   return SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_STEP);
-}
-
-//+------------------------------------------------------------------+
-//| Get maximum lot size for current symbol                          |
-//+------------------------------------------------------------------+
-double CSVUtils::GetMaxLot()
-{
-   return SymbolInfoDouble(Symbol(), SYMBOL_VOLUME_MAX);
-}
-
-//+------------------------------------------------------------------+
-//| Get contract size for current symbol                             |
-//+------------------------------------------------------------------+
-double CSVUtils::GetContractSize()
-{
-   return SymbolInfoDouble(Symbol(), SYMBOL_TRADE_CONTRACT_SIZE);
-}
-
-//+------------------------------------------------------------------+
-//| Convert pips to price                                           |
-//+------------------------------------------------------------------+
-double CSVUtils::PipsToPrice(double pips)
-{
-   // For XAUUSD, typically 1 pip = 0.01
-   // However, this can vary by broker
-   return pips * 0.01;
-}
-
-//+------------------------------------------------------------------+
-//| Convert price to pips                                           |
-//+------------------------------------------------------------------+
-double CSVUtils::PriceToPips(double price)
-{
-   // For XAUUSD, typically 0.01 = 1 pip
-   return price / 0.01;
-}
-
-//+------------------------------------------------------------------+
-//| Check if lot size is valid for current symbol                    |
-//+------------------------------------------------------------------+
-bool CSVUtils::IsValidLotSize(double lotSize)
-{
-   double minLot = GetMinLot();
-   double maxLot = GetMaxLot();
-   double lotStep = GetLotStep();
+   // Split the string
+   pos = 0;
+   int prevPos = 0;
+   int idx = 0;
    
-   // Check if lot size is within min/max range
-   if(lotSize < minLot || lotSize > maxLot) {
-      return false;
+   while((pos = StringFind(str, separator, prevPos)) != -1)
+   {
+      array[idx++] = StringSubstr(str, prevPos, pos - prevPos);
+      prevPos = pos + sepLen;
    }
    
-   // Check if lot size is a multiple of lotStep
-   double remainder = MathMod(lotSize - minLot, lotStep);
+   // Add the last part
+   array[idx] = StringSubstr(str, prevPos, len - prevPos);
    
-   // Allow for floating point precision issues
-   return (MathAbs(remainder) < 0.000001 || MathAbs(remainder - lotStep) < 0.000001);
+   return count + 1;
 }
 
 //+------------------------------------------------------------------+
-//| Normalize lot size to valid value for current symbol            |
+//| Mathematical utilities                                           |
 //+------------------------------------------------------------------+
-double CSVUtils::NormalizeLotSize(double lotSize)
+
+//+------------------------------------------------------------------+
+//| Round to the nearest specified precision                         |
+//+------------------------------------------------------------------+
+double RoundToDigits(double value, int digits)
 {
-   double minLot = GetMinLot();
-   double maxLot = GetMaxLot();
-   double lotStep = GetLotStep();
+   double factor = MathPow(10.0, digits);
+   return MathRound(value * factor) / factor;
+}
+
+//+------------------------------------------------------------------+
+//| Normalize price value based on symbol digits                     |
+//+------------------------------------------------------------------+
+double NormalizePrice(string symbol, double price)
+{
+   int digits = (int)MarketInfo(symbol, MODE_DIGITS);
+   return NormalizeDouble(price, digits);
+}
+
+//+------------------------------------------------------------------+
+//| Convert lot size to contract size                                |
+//+------------------------------------------------------------------+
+double LotsToContractSize(string symbol, double lots)
+{
+   double contractSize = MarketInfo(symbol, MODE_LOTSIZE);
+   return lots * contractSize;
+}
+
+//+------------------------------------------------------------------+
+//| Calculate position value                                         |
+//+------------------------------------------------------------------+
+double CalculatePositionValue(string symbol, double lots, double price)
+{
+   double contractSize = MarketInfo(symbol, MODE_LOTSIZE);
+   double tickValue = MarketInfo(symbol, MODE_TICKVALUE);
+   double tickSize = MarketInfo(symbol, MODE_TICKSIZE);
    
-   // Ensure lot size is within range
-   lotSize = MathMax(minLot, MathMin(maxLot, lotSize));
-   
-   // Round to nearest valid lot size
-   int steps = (int)MathRound((lotSize - minLot) / lotStep);
-   lotSize = minLot + steps * lotStep;
-   
-   return NormalizeDouble(lotSize, 2);
+   return lots * contractSize * price * (tickValue / tickSize);
 }
